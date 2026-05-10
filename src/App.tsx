@@ -29,6 +29,8 @@ import {
 import { fetchBitgetMixUsdtOrderBook } from "./lib/bitgetDepth";
 import { subscribeBitgetMixBooks15 } from "./lib/bitgetMixWsBook";
 import { calcLiquidationPrice, calcUnrealizedPnl, validateOrder } from "./lib/trading";
+import { tradingViewSymbol } from "./lib/tradingViewSymbol";
+import { TradingViewEmbed } from "./components/TradingViewEmbed";
 
 type OrderSide = "LONG" | "SHORT";
 type OrderType = "MARKET" | "LIMIT";
@@ -1701,6 +1703,11 @@ function App() {
     return null;
   };
 
+  const tvChartSymbol = useMemo(
+    () => tradingViewSymbol(marketGroup, symbol),
+    [marketGroup, symbol]
+  );
+
   return (
     <div className="app">
       <header className="header">
@@ -1809,7 +1816,20 @@ function App() {
                       className={symbol === s ? "symbolRail-row symbolRail-row--active" : "symbolRail-row"}
                       onClick={() => setSymbol(s)}
                     >
-                      <span className="symbolRail-sym">{s}</span>
+                      <div className="symbolRail-row-main">
+                        <span className="symbolRail-sym">{s}</span>
+                        <span
+                          className={
+                            s === symbol
+                              ? marketChange >= 0
+                                ? "symbolRail-chg symbolRail-chg--up"
+                                : "symbolRail-chg symbolRail-chg--down"
+                              : "symbolRail-chg symbolRail-chg--na"
+                          }
+                        >
+                          {s === symbol ? `${marketChange >= 0 ? "+" : ""}${marketChange.toFixed(2)}%` : "—"}
+                        </span>
+                      </div>
                       <span className="symbolRail-px">
                         {mid != null
                           ? mid.toLocaleString(undefined, { maximumFractionDigits: Math.max(2, decimals) })
@@ -1837,6 +1857,17 @@ function App() {
         {speedEventNotice ? (
           <div className="card">
             <strong>[스피드 알림]</strong> {speedEventNotice}
+          </div>
+        ) : null}
+        {showSymbolRail && tvChartSymbol ? (
+          <div className="card chartDock">
+            <div className="chartDock-head">
+              <h3 className="chartDock-title">차트</h3>
+              <small className="chartDock-meta">
+                {tvChartSymbol} · TradingView
+              </small>
+            </div>
+            <TradingViewEmbed tvSymbol={tvChartSymbol} />
           </div>
         ) : null}
         <Routes>
