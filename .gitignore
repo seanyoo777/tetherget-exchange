@@ -4,3 +4,6 @@ backend/data/*.json
 .env
 .env.*
 !.env.example
+
+# TypeScript incremental build artifacts
+*.tsbuildinfo
