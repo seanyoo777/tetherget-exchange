@@ -28,7 +28,12 @@ import {
 } from "./lib/api";
 import { fetchBitgetMixUsdtOrderBook } from "./lib/bitgetDepth";
 import { fetchBitgetMixUsdtAllTickers } from "./lib/bitgetTickers";
-import { MARKET_PREFS_KEY, mergePersistMarketPrefs, readMarketPrefsFromStorage } from "./lib/marketPrefs";
+import {
+  MARKET_PREFS_KEY,
+  mergePersistMarketPrefs,
+  readMarketPrefsFromStorage,
+  type MarketGroupKey
+} from "./lib/marketPrefs";
 import { formatHealthProbeTooltip } from "./lib/healthProbeTooltip";
 import { useApiHealthProbe } from "./hooks/useApiHealthProbe";
 import { subscribeBitgetMixBooks15 } from "./lib/bitgetMixWsBook";
@@ -45,7 +50,6 @@ import { TradingViewEmbed } from "./components/TradingViewEmbed";
 type OrderSide = "LONG" | "SHORT";
 type OrderType = "MARKET" | "LIMIT";
 type OrderUiMode = "BASIC" | "SPEED";
-type MarketGroupKey = "CRYPTO" | "US_STOCKS" | "KR_STOCKS" | "US_FUTURES" | "KR_FUTURES";
 type SpeedClickMode = "ONE" | "DOUBLE";
 type MitExecMode = "MARKET" | "LIMIT";
 type SpeedOpenOrder = {

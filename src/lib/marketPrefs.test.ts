@@ -1,69 +1,87 @@
-import { describe, expect, it } from "vitest";
-import { mergePersistMarketPrefs, readMarketPrefsFromStorage, resolveMarketPrefs } from "./marketPrefs";
+import { describe, expect, it, vi } from "vitest";
+import {
+  MARKET_PREFS_KEY,
+  mergePersistMarketPrefs,
+  mergePersistedMarketJson,
+  readMarketPrefsFromStorage,
+  resolvePersistedMarketSelection,
+  type MarketGroupKey
+} from "./marketPrefs";
 
-const valid = (g: string) => ["CRYPTO", "US_STOCKS"].includes(g);
-const symbolsFor = (mg: string) => (mg === "US_STOCKS" ? (["AAPL", "TSLA"] as const) : (["BTCUSDT", "ETHUSDT"] as const));
+const LISTS: Record<MarketGroupKey, readonly string[]> = {
+  CRYPTO: ["BTCUSDT", "ETHUSDT"],
+  US_STOCKS: ["AAPL"],
+  KR_STOCKS: ["005930.KS"],
+  US_FUTURES: ["NQ=F"],
+  KR_FUTURES: ["KOSPI200F"]
+};
 
-describe("resolveMarketPrefs", () => {
-  it("uses saved group and symbol when valid", () => {
+describe("resolvePersistedMarketSelection", () => {
+  it("uses defaults when payload null", () => {
+    expect(resolvePersistedMarketSelection(null, LISTS)).toEqual({
+      marketGroup: "CRYPTO",
+      symbol: "BTCUSDT"
+    });
+  });
+
+  it("restores saved symbol when valid", () => {
     expect(
-      resolveMarketPrefs(
-        { marketGroup: "US_STOCKS", symbols: { US_STOCKS: "TSLA" } },
-        { marketGroup: "CRYPTO", symbol: "BTCUSDT" },
-        valid,
-        symbolsFor
+      resolvePersistedMarketSelection(
+        { marketGroup: "CRYPTO", symbols: { CRYPTO: "ETHUSDT" } },
+        LISTS
       )
-    ).toEqual({ marketGroup: "US_STOCKS", symbol: "TSLA" });
+    ).toEqual({ marketGroup: "CRYPTO", symbol: "ETHUSDT" });
   });
 
-  it("falls back when symbol not in list", () => {
+  it("falls back to first list symbol when saved invalid", () => {
     expect(
-      resolveMarketPrefs(
+      resolvePersistedMarketSelection(
         { marketGroup: "CRYPTO", symbols: { CRYPTO: "UNKNOWN" } },
-        { marketGroup: "CRYPTO", symbol: "BTCUSDT" },
-        valid,
-        symbolsFor
-      ).symbol
-    ).toBe("BTCUSDT");
+        LISTS
+      )
+    ).toEqual({ marketGroup: "CRYPTO", symbol: "BTCUSDT" });
   });
+});
 
-  it("falls back group when invalid", () => {
-    expect(
-      resolveMarketPrefs(
-        { marketGroup: "BAD" },
-        { marketGroup: "CRYPTO", symbol: "BTCUSDT" },
-        valid,
-        symbolsFor
-      ).marketGroup
-    ).toBe("CRYPTO");
+describe("mergePersistedMarketJson / mergePersistMarketPrefs", () => {
+  it("merges symbols and sets marketGroup", () => {
+    const prev = JSON.stringify({
+      marketGroup: "CRYPTO",
+      symbols: { CRYPTO: "BTCUSDT" }
+    });
+    expect(mergePersistedMarketJson(prev, "US_STOCKS", "AAPL")).toEqual(
+      mergePersistMarketPrefs(prev, "US_STOCKS", "AAPL")
+    );
+    expect(JSON.parse(mergePersistMarketPrefs(prev, "US_STOCKS", "AAPL"))).toEqual({
+      marketGroup: "US_STOCKS",
+      symbols: { CRYPTO: "BTCUSDT", US_STOCKS: "AAPL" }
+    });
   });
 });
 
 describe("readMarketPrefsFromStorage", () => {
-  it("reads from getItem", () => {
-    const mem = new Map<string, string>([
-      ["tgx.market.prefs", JSON.stringify({ marketGroup: "CRYPTO", symbols: { CRYPTO: "ETHUSDT" } })]
-    ]);
-    const r = readMarketPrefsFromStorage(
-      (k) => mem.get(k) ?? null,
-      { marketGroup: "CRYPTO", symbol: "BTCUSDT" },
-      valid,
-      symbolsFor
-    );
-    expect(r.symbol).toBe("ETHUSDT");
-  });
-});
+  const isMg = (g: string): g is MarketGroupKey => g in LISTS;
 
-describe("mergePersistMarketPrefs", () => {
-  it("merges symbols and sets marketGroup", () => {
-    const prev = JSON.stringify({
-      marketGroup: "CRYPTO",
-      symbols: { CRYPTO: "BTCUSDT", US_STOCKS: "AAPL" }
-    });
-    const next = mergePersistMarketPrefs(prev, "CRYPTO", "ETHUSDT");
-    const p = JSON.parse(next) as { marketGroup: string; symbols: Record<string, string> };
-    expect(p.marketGroup).toBe("CRYPTO");
-    expect(p.symbols.CRYPTO).toBe("ETHUSDT");
-    expect(p.symbols.US_STOCKS).toBe("AAPL");
+  it("reads from injected storage", () => {
+    const getItem = vi.fn((key: string) =>
+      key === MARKET_PREFS_KEY
+        ? JSON.stringify({ marketGroup: "CRYPTO", symbols: { CRYPTO: "ETHUSDT" } })
+        : null
+    );
+    const r = readMarketPrefsFromStorage(
+      getItem,
+      { marketGroup: "CRYPTO", symbol: "BTCUSDT" },
+      isMg,
+      (mg) => LISTS[mg]
+    );
+    expect(r).toEqual({ marketGroup: "CRYPTO", symbol: "ETHUSDT" });
+  });
+
+  it("returns fallback when empty", () => {
+    const getItem = vi.fn(() => null);
+    const fb = { marketGroup: "CRYPTO" as const, symbol: "BTCUSDT" };
+    expect(
+      readMarketPrefsFromStorage(getItem, fb, isMg, (mg) => LISTS[mg])
+    ).toEqual(fb);
   });
 });
