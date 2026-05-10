@@ -48,6 +48,7 @@ import {
 import { tradingViewSymbol } from "./lib/tradingViewSymbol";
 import { CommaDecimalInput } from "./components/CommaDecimalInput";
 import { CryptoAssetStrip } from "./components/CryptoAssetStrip";
+import { HomePage } from "./components/HomePage";
 import { CryptoAssetSummary } from "./components/CryptoAssetSummary";
 import { LeverageControl } from "./components/LeverageControl";
 import { SpeedOrderPanel } from "./components/SpeedOrderPanel";
@@ -2726,16 +2727,8 @@ function App() {
           <Route
             path="/"
             element={
-              <ShellPage title="메인">
-                <div>
-                  <p>
-                    이 프로젝트는 <strong>중앙화 거래소(CEX)</strong> 형태입니다. 거래소가 주문·체결 흐름을 중앙에서 다루며,
-                    P2P 마켓(매물 게시·1:1 이체)과는 다릅니다.
-                  </p>
-                  <p>
-                    현물·선물·모의투자·수익률 대회·관리자(정산·KYC·출금 승인 등)·레퍼럴을 포함합니다.
-                  </p>
-                </div>
+              <ShellPage title="메인" bare>
+                <HomePage trades={trades} ranking={ranking} setMarketGroup={setMarketGroup} setSymbol={setSymbol} />
               </ShellPage>
             }
           />
