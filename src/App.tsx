@@ -270,6 +270,28 @@ const MARKET_GROUPS: Record<MarketGroupKey, MarketGroupConfig> = {
   }
 };
 
+const MARKET_PREFS_KEY = "tgx.market.prefs";
+
+function readMarketPrefs(): { marketGroup: MarketGroupKey; symbol: string } {
+  const fallback = { marketGroup: "CRYPTO" as MarketGroupKey, symbol: "BTCUSDT" };
+  try {
+    const raw = localStorage.getItem(MARKET_PREFS_KEY);
+    if (!raw) return fallback;
+    const p = JSON.parse(raw) as {
+      marketGroup?: string;
+      symbols?: Partial<Record<MarketGroupKey, string>>;
+    };
+    const mg =
+      p.marketGroup && p.marketGroup in MARKET_GROUPS ? (p.marketGroup as MarketGroupKey) : fallback.marketGroup;
+    const list = MARKET_GROUPS[mg].symbols;
+    const saved = p.symbols?.[mg];
+    const sym = saved && list.includes(saved) ? saved : list[0];
+    return { marketGroup: mg, symbol: sym };
+  } catch {
+    return fallback;
+  }
+}
+
 function symChangeKey(marketGroup: MarketGroupKey, sym: string) {
   return `${marketGroup}:${sym.trim().toUpperCase()}`;
 }
@@ -294,8 +316,8 @@ function ShellPage({ title, children }: { title: string; children: ReactNode }) 
 
 function App() {
   const location = useLocation();
-  const [marketGroup, setMarketGroup] = useState<MarketGroupKey>("CRYPTO");
-  const [symbol, setSymbol] = useState("BTCUSDT");
+  const [marketGroup, setMarketGroup] = useState<MarketGroupKey>(() => readMarketPrefs().marketGroup);
+  const [symbol, setSymbol] = useState(() => readMarketPrefs().symbol);
   const [isPractice, setIsPractice] = useState(true);
   const [liveUsdt, setLiveUsdt] = useState(1200);
   const [practiceUsdt, setPracticeUsdt] = useState(50000);
@@ -671,6 +693,22 @@ function App() {
   useEffect(() => {
     setSymbol((prev) => (marketCfg.symbols.includes(prev) ? prev : marketCfg.symbols[0]));
   }, [marketCfg.symbols]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(MARKET_PREFS_KEY);
+      const prev = raw ? (JSON.parse(raw) as { symbols?: Partial<Record<MarketGroupKey, string>> }) : {};
+      localStorage.setItem(
+        MARKET_PREFS_KEY,
+        JSON.stringify({
+          marketGroup,
+          symbols: { ...prev.symbols, [marketGroup]: symbol }
+        })
+      );
+    } catch {
+      /* quota / 비공개 창 */
+    }
+  }, [marketGroup, symbol]);
   useEffect(() => {
     if (marketGroup !== "CRYPTO") {
       setCryptoDepthLive(false);
