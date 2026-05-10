@@ -517,9 +517,19 @@ function App() {
     if (marketGroup !== "CRYPTO") return;
     const dec = priceDecimalsForTick(tickSize);
     const snap = (v: number) => Number((Math.round(v / tickSize) * tickSize).toFixed(dec));
-    setLimitPrice((p) => snap(p));
-    setSpeedPrice((p) => snap(p));
-    setSpeedMitTrigger((t) => snap(t));
+    const k = symbol.trim().toUpperCase();
+    const mid = cryptoTickerMids[k];
+    if (mid != null && Number.isFinite(mid)) {
+      const p = snap(mid);
+      setLimitPrice(p);
+      setSpeedPrice(p);
+      setSpeedMitTrigger(p);
+    } else {
+      setLimitPrice((prev) => snap(prev));
+      setSpeedPrice((prev) => snap(prev));
+      setSpeedMitTrigger((prev) => snap(prev));
+    }
+    // cryptoTickerMids 의존 제외: 폴링마다 주문가가 덮어쓰이지 않도록. 심볼·틱·시장군 변경 시에만 실행.
   }, [symbol, tickSize, marketGroup]);
 
   useEffect(() => {
