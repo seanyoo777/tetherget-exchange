@@ -13,27 +13,23 @@ export type BitgetMixTickerBrief = {
   baseVolume: number | null;
 };
 
-export async function fetchBitgetMixUsdtAllTickers(): Promise<Map<string, BitgetMixTickerBrief>> {
-  const url = "https://api.bitget.com/api/v2/mix/market/tickers?productType=USDT-FUTURES";
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`bitget tickers http ${res.status}`);
-  const json = (await res.json()) as {
-    code?: string;
-    msg?: string;
-    data?: Array<{
-      symbol?: string;
-      lastPr?: string;
-      change24h?: string;
-      markPrice?: string;
-      fundingRate?: string;
-      baseVolume?: string;
-    }>;
-  };
-  if (json.code !== "00000" || !json.data) {
-    throw new Error(json.msg ?? "bitget tickers rejected");
+type BitgetTickerRowJson = {
+  symbol?: string;
+  lastPr?: string;
+  change24h?: string;
+  markPrice?: string;
+  fundingRate?: string;
+  baseVolume?: string;
+};
+
+/** HTTP 없이 JSON 페이로드만 검증·변환 (테스트·재사용용). */
+export function parseBitgetMixTickersResponse(json: unknown): Map<string, BitgetMixTickerBrief> {
+  const payload = json as { code?: string; msg?: string; data?: BitgetTickerRowJson[] };
+  if (payload.code !== "00000" || !payload.data) {
+    throw new Error(payload.msg ?? "bitget tickers rejected");
   }
   const out = new Map<string, BitgetMixTickerBrief>();
-  for (const row of json.data) {
+  for (const row of payload.data) {
     const sym = row.symbol?.trim().toUpperCase();
     if (!sym) continue;
     const lastPr = Number(row.lastPr);
@@ -51,4 +47,12 @@ export async function fetchBitgetMixUsdtAllTickers(): Promise<Map<string, Bitget
     });
   }
   return out;
+}
+
+export async function fetchBitgetMixUsdtAllTickers(): Promise<Map<string, BitgetMixTickerBrief>> {
+  const url = "https://api.bitget.com/api/v2/mix/market/tickers?productType=USDT-FUTURES";
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`bitget tickers http ${res.status}`);
+  const json = await res.json();
+  return parseBitgetMixTickersResponse(json);
 }
