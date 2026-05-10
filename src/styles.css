@@ -317,6 +317,41 @@ body {
   min-height: 380px;
 }
 
+.exchangeTopSplit {
+  display: grid;
+  grid-template-columns: 1fr minmax(300px, 400px);
+  gap: 12px;
+  margin-bottom: 12px;
+  align-items: start;
+}
+
+.exchangeTopSplit--bookOnly {
+  grid-template-columns: 1fr;
+}
+
+@media (max-width: 1024px) {
+  .exchangeTopSplit {
+    grid-template-columns: 1fr;
+  }
+}
+
+.chartDock--exchange {
+  min-height: 360px;
+}
+
+.chartDock--exchange .tvEmbedRoot {
+  min-height: 340px;
+}
+
+.exchangeOrderbookCard table {
+  font-size: 12px;
+}
+
+.exchangeOrderbookCard {
+  max-height: min(520px, 70vh);
+  overflow: auto;
+}
+
 .grid {
   display: grid;
   gap: 10px;

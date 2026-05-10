@@ -263,6 +263,10 @@ const MARKET_GROUPS: Record<MarketGroupKey, MarketGroupConfig> = {
   }
 };
 
+function symChangeKey(marketGroup: MarketGroupKey, sym: string) {
+  return `${marketGroup}:${sym.trim().toUpperCase()}`;
+}
+
 function ShellPage({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="panel">
@@ -280,7 +284,8 @@ function App() {
   const [liveUsdt, setLiveUsdt] = useState(1200);
   const [practiceUsdt, setPracticeUsdt] = useState(50000);
   const [price, setPrice] = useState(103245.5);
-  const [marketChange, setMarketChange] = useState(0);
+  /** 시장군+심볼별 24h 변동률(%). 라이브 티커가 오면 해당 심볼만 갱신, 나머지는 모의 보간. */
+  const [symbolDayChangePct, setSymbolDayChangePct] = useState<Record<string, number>>({});
   const [apiStatus, setApiStatus] = useState<"CONNECTED" | "FALLBACK">("FALLBACK");
   const [cryptoDepthLive, setCryptoDepthLive] = useState(false);
   const [cryptoFundingPct, setCryptoFundingPct] = useState<number | null>(null);
@@ -456,6 +461,7 @@ function App() {
   };
   const marketCfg = MARKET_GROUPS[marketGroup];
   const tickSize = marketCfg.tickSize;
+  const marketChange = symbolDayChangePct[symChangeKey(marketGroup, symbol)] ?? 0;
   const qtyLabel = marketQtyLabel(marketGroup);
   const symbolContractSpec = contractSpecForSymbol(symbol);
   const dataGrade = useMemo(() => {
@@ -743,7 +749,10 @@ function App() {
           const volRaw = ticker?.baseVolume != null ? Number(ticker.baseVolume) : NaN;
           if (mounted && Number.isFinite(nextPrice)) {
             setPrice(nextPrice);
-            setMarketChange(nextChange);
+            setSymbolDayChangePct((p) => ({
+              ...p,
+              [symChangeKey(marketGroup, symbol)]: nextChange
+            }));
             setLimitPrice(nextPrice);
             setSpeedPrice(nextPrice);
             setCryptoFundingPct(Number.isFinite(frRaw) ? frRaw : null);
@@ -776,7 +785,10 @@ function App() {
           const nextChange = prevClose > 0 ? ((nextPrice - prevClose) / prevClose) * 100 : 0;
           if (mounted && Number.isFinite(nextPrice)) {
             setPrice(nextPrice);
-            setMarketChange(nextChange);
+            setSymbolDayChangePct((p) => ({
+              ...p,
+              [symChangeKey(marketGroup, symbol)]: nextChange
+            }));
             setLimitPrice(nextPrice);
             setSpeedPrice(nextPrice);
             const book = await getOrderBookData(nextPrice, false);
@@ -792,7 +804,10 @@ function App() {
         mockPrice = snapPrice(Math.max(tickSize, mockPrice + (Math.random() - 0.5) * mockPrice * 0.003));
         if (mounted) {
           setPrice(mockPrice);
-          setMarketChange((Math.random() - 0.5) * 2);
+          setSymbolDayChangePct((p) => ({
+            ...p,
+            [symChangeKey(marketGroup, symbol)]: (Math.random() - 0.5) * 2
+          }));
           setLimitPrice(mockPrice);
           setSpeedPrice(mockPrice);
           const keepWsBook =
@@ -818,6 +833,36 @@ function App() {
       window.clearInterval(id);
     };
   }, [marketCfg.fetcher, marketGroup, symbol, tickSize]);
+
+  useEffect(() => {
+    setSymbolDayChangePct((prev) => {
+      const next = { ...prev };
+      for (const s of marketCfg.symbols) {
+        const k = symChangeKey(marketGroup, s);
+        if (next[k] === undefined) {
+          next[k] = (Math.random() - 0.5) * 6;
+        }
+      }
+      return next;
+    });
+  }, [marketGroup, marketCfg.symbols]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setSymbolDayChangePct((prev) => {
+        const next = { ...prev };
+        for (const s of marketCfg.symbols) {
+          if (s === symbol) continue;
+          const k = symChangeKey(marketGroup, s);
+          const cur = next[k];
+          if (cur === undefined) continue;
+          next[k] = Math.max(-15, Math.min(15, cur + (Math.random() - 0.5) * 0.9));
+        }
+        return next;
+      });
+    }, 8000);
+    return () => window.clearInterval(id);
+  }, [marketGroup, marketCfg.symbols, symbol]);
 
   useEffect(() => {
     const raw = localStorage.getItem("tetherget-session");
@@ -1708,6 +1753,113 @@ function App() {
     [marketGroup, symbol]
   );
 
+  const orderBookCard = (
+    <div className="card exchangeOrderbookCard">
+      <h3>오더북</h3>
+      <small>
+        오더북 모드:{" "}
+        {dataGrade.orderbook === "MOCK"
+          ? "시뮬레이션 호가"
+          : dataGrade.orderbook === "LIVE" && isCryptoGroup
+            ? cryptoDepthFromWs
+              ? "Bitget USDT-M 호가 (WS books15)"
+              : "Bitget USDT-M 호가 (REST 스냅샷)"
+            : "외부호가"}
+      </small>
+      {orderUiMode === "SPEED" ? (
+        <div className="stack">
+          <small>스피드북: 행 버튼으로 즉시 주문</small>
+          <div className="twoCol">
+            <label>
+              클릭 모드
+              <select
+                value={speedBookClickMode}
+                onChange={(e) => setSpeedBookClickMode(e.target.value as SpeedClickMode)}
+              >
+                <option value="ONE">1클릭</option>
+                <option value="DOUBLE">더블클릭</option>
+              </select>
+            </label>
+            <label>
+              주문확인
+              <select
+                value={speedConfirmOrder ? "ON" : "OFF"}
+                onChange={(e) => setSpeedConfirmOrder(e.target.value === "ON")}
+              >
+                <option value="OFF">OFF</option>
+                <option value="ON">ON</option>
+              </select>
+            </label>
+          </div>
+          {dataGrade.orderbook === "MOCK" ? (
+            <small className="orderbookWarn">
+              MOCK 호가 기반 주문입니다. 실제 거래소 호가와 체결 결과가 다를 수 있습니다.
+            </small>
+          ) : null}
+        </div>
+      ) : null}
+      <table>
+        <thead>
+          <tr>
+            <th>ASK</th>
+            <th>{qtyLabel}</th>
+            {isFuturesGroup ? <th>매도명목(USD)</th> : null}
+            {isStockGroup ? <th>매도잔량비</th> : null}
+            {isCryptoGroup ? <th>매도노셔널(USDT)</th> : null}
+            <th>BID</th>
+            <th>{qtyLabel}</th>
+            {isFuturesGroup ? <th>매수명목(USD)</th> : null}
+            {isStockGroup ? <th>매수잔량비</th> : null}
+            {isCryptoGroup ? <th>매수노셔널(USDT)</th> : null}
+            {orderUiMode === "SPEED" ? <th>주문</th> : null}
+          </tr>
+        </thead>
+        <tbody>
+          {orderBook.map((row) => (
+            <tr key={`${row.ask}-${row.bid}`}>
+              <td>{row.ask.toLocaleString()}</td>
+              <td>{formatBookQty(row.askQty)}</td>
+              {isFuturesGroup ? (
+                <td>
+                  {symbolContractSpec
+                    ? Math.round(row.ask * row.askQty * symbolContractSpec.multiplier).toLocaleString()
+                    : "-"}
+                </td>
+              ) : null}
+              {isStockGroup ? (
+                <td>{((row.askQty / Math.max(1, row.askQty + row.bidQty)) * 100).toFixed(1)}%</td>
+              ) : null}
+              {isCryptoGroup ? <td>{(row.ask * row.askQty).toFixed(1)}</td> : null}
+              <td>{row.bid.toLocaleString()}</td>
+              <td>{formatBookQty(row.bidQty)}</td>
+              {isFuturesGroup ? (
+                <td>
+                  {symbolContractSpec
+                    ? Math.round(row.bid * row.bidQty * symbolContractSpec.multiplier).toLocaleString()
+                    : "-"}
+                </td>
+              ) : null}
+              {isStockGroup ? (
+                <td>{((row.bidQty / Math.max(1, row.askQty + row.bidQty)) * 100).toFixed(1)}%</td>
+              ) : null}
+              {isCryptoGroup ? <td>{(row.bid * row.bidQty).toFixed(1)}</td> : null}
+              {orderUiMode === "SPEED" ? (
+                <td>
+                  <div className="rowActions">
+                    <button className="ghost" onClick={() => submitSpeedBookOrder("SHORT", row.ask)}>
+                      매도
+                    </button>
+                    <button onClick={() => submitSpeedBookOrder("LONG", row.bid)}>매수</button>
+                  </div>
+                </td>
+              ) : null}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
   return (
     <div className="app">
       <header className="header">
@@ -1809,6 +1961,10 @@ function App() {
             <ul className="symbolRail-list">
               {marketCfg.symbols.map((s) => {
                 const mid = midHintForSymbol(s);
+                const rowChg = symbolDayChangePct[symChangeKey(marketGroup, s)];
+                const chgStr =
+                  rowChg !== undefined ? `${rowChg >= 0 ? "+" : ""}${rowChg.toFixed(2)}%` : "—";
+                const chgUp = rowChg !== undefined && rowChg >= 0;
                 return (
                   <li key={s}>
                     <button
@@ -1820,14 +1976,14 @@ function App() {
                         <span className="symbolRail-sym">{s}</span>
                         <span
                           className={
-                            s === symbol
-                              ? marketChange >= 0
+                            rowChg === undefined
+                              ? "symbolRail-chg symbolRail-chg--na"
+                              : chgUp
                                 ? "symbolRail-chg symbolRail-chg--up"
                                 : "symbolRail-chg symbolRail-chg--down"
-                              : "symbolRail-chg symbolRail-chg--na"
                           }
                         >
-                          {s === symbol ? `${marketChange >= 0 ? "+" : ""}${marketChange.toFixed(2)}%` : "—"}
+                          {chgStr}
                         </span>
                       </div>
                       <span className="symbolRail-px">
@@ -1859,7 +2015,7 @@ function App() {
             <strong>[스피드 알림]</strong> {speedEventNotice}
           </div>
         ) : null}
-        {showSymbolRail && tvChartSymbol ? (
+        {showSymbolRail && tvChartSymbol && location.pathname !== "/exchange" ? (
           <div className="card chartDock">
             <div className="chartDock-head">
               <h3 className="chartDock-title">차트</h3>
@@ -1920,6 +2076,24 @@ function App() {
                     <strong>심볼 거래 OFF:</strong> 이 종목은 현재 주문을 받지 않습니다.
                   </div>
                 ) : null}
+                <div
+                  className={
+                    tvChartSymbol ? "exchangeTopSplit" : "exchangeTopSplit exchangeTopSplit--bookOnly"
+                  }
+                >
+                  {tvChartSymbol ? (
+                    <div className="card chartDock chartDock--exchange">
+                      <div className="chartDock-head">
+                        <h3 className="chartDock-title">차트</h3>
+                        <small className="chartDock-meta">
+                          {tvChartSymbol} · TradingView
+                        </small>
+                      </div>
+                      <TradingViewEmbed tvSymbol={tvChartSymbol} />
+                    </div>
+                  ) : null}
+                  {orderBookCard}
+                </div>
                 <div className="twoCol">
                   <div className="card">
                     <h3>시장</h3>
@@ -1971,110 +2145,6 @@ function App() {
                   <div className="card">
                     <h3>주문 패널</h3>
                     <p>아래에 스피드·기본 주문창이 표시됩니다. 현물·선물 전용 메뉴에서도 동일 UI를 사용합니다.</p>
-                  </div>
-                  <div className="card">
-                    <h3>오더북</h3>
-                    <small>
-                      오더북 모드:{" "}
-                      {dataGrade.orderbook === "MOCK"
-                        ? "시뮬레이션 호가"
-                        : dataGrade.orderbook === "LIVE" && isCryptoGroup
-                          ? cryptoDepthFromWs
-                            ? "Bitget USDT-M 호가 (WS books15)"
-                            : "Bitget USDT-M 호가 (REST 스냅샷)"
-                          : "외부호가"}
-                    </small>
-                    {orderUiMode === "SPEED" ? (
-                      <div className="stack">
-                        <small>스피드북: 행 버튼으로 즉시 주문</small>
-                        <div className="twoCol">
-                          <label>
-                            클릭 모드
-                            <select
-                              value={speedBookClickMode}
-                              onChange={(e) => setSpeedBookClickMode(e.target.value as SpeedClickMode)}
-                            >
-                              <option value="ONE">1클릭</option>
-                              <option value="DOUBLE">더블클릭</option>
-                            </select>
-                          </label>
-                          <label>
-                            주문확인
-                            <select
-                              value={speedConfirmOrder ? "ON" : "OFF"}
-                              onChange={(e) => setSpeedConfirmOrder(e.target.value === "ON")}
-                            >
-                              <option value="OFF">OFF</option>
-                              <option value="ON">ON</option>
-                            </select>
-                          </label>
-                        </div>
-                        {dataGrade.orderbook === "MOCK" ? (
-                          <small className="orderbookWarn">
-                            MOCK 호가 기반 주문입니다. 실제 거래소 호가와 체결 결과가 다를 수 있습니다.
-                          </small>
-                        ) : null}
-                      </div>
-                    ) : null}
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>ASK</th>
-                          <th>{qtyLabel}</th>
-                          {isFuturesGroup ? <th>매도명목(USD)</th> : null}
-                          {isStockGroup ? <th>매도잔량비</th> : null}
-                          {isCryptoGroup ? <th>매도노셔널(USDT)</th> : null}
-                          <th>BID</th>
-                          <th>{qtyLabel}</th>
-                          {isFuturesGroup ? <th>매수명목(USD)</th> : null}
-                          {isStockGroup ? <th>매수잔량비</th> : null}
-                          {isCryptoGroup ? <th>매수노셔널(USDT)</th> : null}
-                          {orderUiMode === "SPEED" ? <th>주문</th> : null}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {orderBook.map((row) => (
-                          <tr key={`${row.ask}-${row.bid}`}>
-                            <td>{row.ask.toLocaleString()}</td>
-                            <td>{formatBookQty(row.askQty)}</td>
-                            {isFuturesGroup ? (
-                              <td>
-                                {symbolContractSpec
-                                  ? Math.round(row.ask * row.askQty * symbolContractSpec.multiplier).toLocaleString()
-                                  : "-"}
-                              </td>
-                            ) : null}
-                            {isStockGroup ? (
-                              <td>{((row.askQty / Math.max(1, row.askQty + row.bidQty)) * 100).toFixed(1)}%</td>
-                            ) : null}
-                            {isCryptoGroup ? <td>{(row.ask * row.askQty).toFixed(1)}</td> : null}
-                            <td>{row.bid.toLocaleString()}</td>
-                            <td>{formatBookQty(row.bidQty)}</td>
-                            {isFuturesGroup ? (
-                              <td>
-                                {symbolContractSpec
-                                  ? Math.round(row.bid * row.bidQty * symbolContractSpec.multiplier).toLocaleString()
-                                  : "-"}
-                              </td>
-                            ) : null}
-                            {isStockGroup ? (
-                              <td>{((row.bidQty / Math.max(1, row.askQty + row.bidQty)) * 100).toFixed(1)}%</td>
-                            ) : null}
-                            {isCryptoGroup ? <td>{(row.bid * row.bidQty).toFixed(1)}</td> : null}
-                            {orderUiMode === "SPEED" ? (
-                              <td>
-                                <div className="rowActions">
-                                  <button className="ghost" onClick={() => submitSpeedBookOrder("SHORT", row.ask)}>
-                                    매도
-                                  </button>
-                                  <button onClick={() => submitSpeedBookOrder("LONG", row.bid)}>매수</button>
-                                </div>
-                              </td>
-                            ) : null}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
                   </div>
                   <div className="card">
                     <h3>실시간 체결 스트림</h3>
