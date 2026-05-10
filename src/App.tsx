@@ -695,6 +695,13 @@ function App() {
       /* quota / 비공개 창 */
     }
   }, [marketGroup, symbol]);
+
+  useEffect(() => {
+    const page = navItems.find(([, to]) => to === location.pathname)?.[0] ?? "";
+    const symPart = `${symbol} · ${marketCfg.label}`;
+    document.title = page ? `${symPart} · ${page} · Tetherget` : `${symPart} · Tetherget`;
+  }, [location.pathname, symbol, marketCfg.label]);
+
   useEffect(() => {
     if (marketGroup !== "CRYPTO") {
       setCryptoDepthLive(false);
@@ -2092,17 +2099,17 @@ function App() {
 
         <main className="grid">
         {alerts.length > 0 ? (
-          <div className="card">
+          <div className="card" role="status" aria-live="polite">
             <strong>실시간 운영 알림:</strong> [{alerts[0].level}] {alerts[0].message}
           </div>
         ) : null}
         {uiError ? (
-          <div className="errorBanner">
+          <div className="errorBanner" role="alert" aria-live="assertive">
             <strong>주문 오류:</strong> {uiError}
           </div>
         ) : null}
         {speedEventNotice ? (
-          <div className="card">
+          <div className="card" role="status" aria-live="polite">
             <strong>[스피드 알림]</strong> {speedEventNotice}
           </div>
         ) : null}
