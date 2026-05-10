@@ -65,6 +65,10 @@ describe("priceDecimalsForTick", () => {
     expect(priceDecimalsForTick(1)).toBe(0);
     expect(priceDecimalsForTick(10)).toBe(0);
   });
+
+  it("falls back to fractional string length for non power-of-10 (e.g. 0.25)", () => {
+    expect(priceDecimalsForTick(0.25)).toBe(2);
+  });
 });
 
 describe("formatTickSizeDisplay", () => {
