@@ -1,22 +1,101 @@
 :root {
   color-scheme: dark;
-  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-  background: #0d1117;
-  color: #e6edf3;
+  --tg-bg-deep: #050816;
+  --tg-bg-mid: #07111f;
+  --tg-bg-panel: #0a1628;
+  --tg-line: rgba(0, 194, 255, 0.12);
+  --tg-line2: rgba(255, 255, 255, 0.06);
+  --tg-buy: #00c896;
+  --tg-sell: #ff4d6d;
+  --tg-accent: #00c2ff;
+  --tg-radius: 8px;
+  --tg-glow-buy: 0 0 14px rgba(0, 200, 150, 0.22);
+  --tg-glow-sell: 0 0 14px rgba(255, 77, 109, 0.22);
+  --tg-glow-accent: 0 0 18px rgba(0, 194, 255, 0.18);
+  font-family:
+    Pretendard,
+    Inter,
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    Arial,
+    sans-serif;
+  background: var(--tg-bg-deep);
+  color: #e8eef7;
 }
 
 * {
   box-sizing: border-box;
 }
 
+html {
+  height: 100%;
+}
+
 body {
   margin: 0;
-  background: #0d1117;
+  background: var(--tg-bg-deep);
+  height: 100%;
+}
+
+#root {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .app {
-  min-height: 100vh;
+  flex: 1;
+  min-height: 0;
   padding: 16px;
+}
+
+/* 기본 숨김은 .visuallyHidden 과 함께 사용 (skipLink.focus 만 확장). */
+
+.skipLink:focus {
+  position: fixed;
+  left: 16px;
+  top: 16px;
+  z-index: 10000;
+  width: auto;
+  height: auto;
+  padding: 10px 14px;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+  background: #161b22;
+  border: 1px solid #1f6feb;
+  border-radius: 8px;
+  color: #e6edf3;
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.skipLink:focus-visible {
+  outline: none;
+}
+
+#main-content:focus {
+  outline: none;
+}
+
+#main-content:focus-visible {
+  outline: 2px solid #58a6ff;
+  outline-offset: 4px;
 }
 
 .header {
@@ -389,9 +468,10 @@ body {
   font-size: 12px;
 }
 
-.exchangeOrderbookCard {
-  max-height: min(520px, 70vh);
-  overflow: auto;
+/* 높이는 .tg-orderbook-wrap 에서 flex로 할당 — 카드 자체는 잘리지 않게 */
+.exchangeOrderbookCard.tg-pane.tg-orderbook {
+  max-height: none;
+  overflow: hidden;
 }
 
 .grid {
@@ -446,6 +526,23 @@ button:hover {
   border-color: #1f6feb;
 }
 
+input:focus-visible,
+select:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid #58a6ff;
+  outline-offset: 2px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+button:disabled:hover {
+  border-color: #30363d;
+}
+
 label {
   display: grid;
   gap: 6px;
@@ -455,6 +552,19 @@ label {
 
 .ghost {
   opacity: 0.75;
+}
+
+.sessionTokenRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sessionTokenReveal {
+  word-break: break-all;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
 }
 
 .activeBtn {
@@ -716,4 +826,1385 @@ td {
   .twoCol {
     grid-template-columns: 1fr;
   }
+}
+
+/* —— TGX 프로 트레이딩 데스크 —— */
+.app--terminal {
+  flex: 1;
+  min-height: 0;
+  height: 100vh;
+  max-height: 100vh;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, var(--tg-bg-deep) 0%, var(--tg-bg-mid) 55%, var(--tg-bg-deep) 100%);
+}
+
+.app--terminal > header {
+  flex-shrink: 0;
+}
+
+.app--terminal > .tg-shell {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tg-header {
+  position: relative;
+  z-index: 50;
+  flex-shrink: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  background: rgba(5, 8, 22, 0.96);
+  border-bottom: 1px solid var(--tg-line2);
+  backdrop-filter: blur(16px);
+}
+
+.tg-header-inner {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  justify-content: flex-start;
+  min-height: 44px;
+}
+
+.tg-brand {
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: 0.04em;
+  color: var(--tg-accent);
+  text-decoration: none;
+  text-shadow: var(--tg-glow-accent);
+  transition: opacity 0.15s ease;
+}
+
+.tg-brand:hover {
+  opacity: 0.9;
+}
+
+.tg-header-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #8b9cb8;
+}
+
+.tg-header-label {
+  white-space: nowrap;
+}
+
+.tg-header-select {
+  padding: 4px 8px;
+  font-size: 11px;
+  border-radius: var(--tg-radius);
+  border: 1px solid var(--tg-line2);
+  background: var(--tg-bg-panel);
+  color: #e8eef7;
+  min-width: 0;
+  max-width: 140px;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.tg-header-select:hover {
+  border-color: rgba(0, 194, 255, 0.35);
+}
+
+.tg-header-modes.tradeModeTabs {
+  border-radius: var(--tg-radius);
+  border: 1px solid var(--tg-line2);
+}
+
+.tg-header-modes .tradeModeTab {
+  padding: 5px 12px;
+  font-size: 11px;
+  transition: background 0.15s ease;
+}
+
+.tg-api-pill {
+  font-size: 10px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--tg-line2);
+  color: #9eb6d3;
+  font-variant-numeric: tabular-nums;
+}
+
+.tg-header-inner .tg-api-pill {
+  margin-left: auto;
+}
+
+.tg-api-pill--warn {
+  border-color: rgba(255, 77, 109, 0.45);
+  color: #ffb8c6;
+}
+
+.tg-header-wallet {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tg-accent);
+  text-decoration: none;
+  padding: 5px 9px;
+  border-radius: var(--tg-radius);
+  border: 1px solid transparent;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.tg-header-wallet:hover {
+  border-color: rgba(0, 194, 255, 0.35);
+  background: rgba(0, 194, 255, 0.08);
+}
+
+.tg-header-menuCol {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.tg-account-switch {
+  display: flex;
+  border-radius: var(--tg-radius);
+  border: 1px solid var(--tg-line2);
+  overflow: hidden;
+  background: var(--tg-bg-panel);
+}
+
+.tg-account-btn {
+  flex: 1;
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: none;
+  background: transparent;
+  color: #9eb6d3;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+  white-space: nowrap;
+}
+
+.tg-account-btn:hover {
+  color: #eaf6ff;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.tg-account-btn--active {
+  color: #eaf6ff;
+  background: rgba(0, 194, 255, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(0, 194, 255, 0.35);
+}
+
+.tg-menu {
+  position: relative;
+}
+
+.tg-menu-summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: var(--tg-radius);
+  border: 1px solid var(--tg-line2);
+  background: var(--tg-bg-panel);
+  color: #dfe8f5;
+  transition: border-color 0.15s ease;
+}
+
+.tg-menu-summary::-webkit-details-marker {
+  display: none;
+}
+
+.tg-menu-summary:hover {
+  border-color: rgba(0, 194, 255, 0.35);
+}
+
+.tg-menu[open] .tg-menu-summary {
+  border-color: rgba(0, 194, 255, 0.45);
+  box-shadow: var(--tg-glow-accent);
+}
+
+.tg-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 220px;
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+  background: var(--tg-bg-panel);
+  border: 1px solid var(--tg-line2);
+  border-radius: var(--tg-radius);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  z-index: 60;
+}
+
+.tg-menu-panel a {
+  color: #dfe8f5;
+  text-decoration: none;
+  font-size: 13px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  transition: background 0.12s ease;
+}
+
+.tg-menu-panel a:hover {
+  background: rgba(0, 194, 255, 0.1);
+}
+
+.tg-menu-meta {
+  font-size: 11px;
+  color: #7d8fa8;
+  padding: 4px 8px;
+}
+
+.tg-menu-token {
+  display: grid;
+  gap: 4px;
+  font-size: 11px;
+  padding: 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.tg-menu-logout {
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.nav--secondary {
+  margin: 8px 16px;
+}
+
+.tg-shell {
+  display: grid;
+  grid-template-columns: minmax(160px, 18%) minmax(0, 1fr);
+  gap: 1px;
+  align-items: stretch;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--tg-line2);
+}
+
+.tg-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  background: var(--tg-bg-deep);
+}
+
+.tg-symbol-col.symbolRail {
+  background: var(--tg-bg-mid);
+  border-right: 1px solid var(--tg-line2);
+  padding: 8px;
+  position: relative;
+  align-self: stretch;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.symbolRail-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.tg-route-bare {
+  display: contents;
+}
+
+.tg-route-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+main.tg-main .tg-route-body {
+  flex: 1;
+  min-height: 0;
+}
+
+.tg-banner {
+  padding: 8px 12px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--tg-line2);
+}
+
+.tg-banner--info {
+  background: rgba(0, 194, 255, 0.08);
+  color: #b8e8ff;
+}
+
+.tg-route-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 24%);
+  gap: 1px;
+  align-items: stretch;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--tg-line2);
+}
+
+.tg-desk-center {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  background: var(--tg-bg-mid);
+}
+
+.tg-chart-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--tg-line2);
+  background: rgba(7, 17, 31, 0.98);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.tg-chart-pair {
+  font-weight: 800;
+  font-size: 13px;
+  color: #fff;
+  letter-spacing: 0.02em;
+}
+
+.tg-chart-price {
+  font-weight: 700;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  color: var(--tg-accent);
+  text-shadow: var(--tg-glow-accent);
+}
+
+.tg-chg {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.tg-chg--up {
+  color: var(--tg-buy);
+  text-shadow: var(--tg-glow-buy);
+}
+
+.tg-chg--down {
+  color: var(--tg-sell);
+  text-shadow: var(--tg-glow-sell);
+}
+
+.tg-chart-badges {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.tg-mini-badge {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--tg-line2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tg-mini-badge--live {
+  border-color: rgba(0, 200, 150, 0.45);
+  color: var(--tg-buy);
+}
+
+.tg-mini-badge--delayed {
+  border-color: rgba(255, 180, 80, 0.45);
+  color: #ffc46b;
+}
+
+.tg-mini-badge--mock {
+  border-color: rgba(180, 140, 255, 0.45);
+  color: #d4b8ff;
+}
+
+.tg-chart-meta {
+  margin-left: auto;
+  color: #7d8fa8;
+  font-size: 11px;
+}
+
+.tg-chart-area {
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tg-chart-area .tvEmbedRoot {
+  flex: 1;
+  min-height: 0;
+}
+
+.tg-chart-placeholder {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: #7d8fa8;
+  background: radial-gradient(ellipse at center, rgba(0, 194, 255, 0.06), transparent 60%);
+}
+
+.tg-desk-right {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--tg-bg-deep);
+}
+
+.tg-desk-right--stack {
+  gap: 0;
+}
+
+.tg-order-wrap {
+  flex: 1 1 52%;
+  min-height: 160px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border-bottom: 1px solid var(--tg-line2);
+}
+
+.tg-order-wrap--stack {
+  flex: 0 0 auto;
+  max-height: min(40vh, 42%);
+  min-height: 0;
+}
+
+.tg-crypto-asset-strip {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--tg-line2);
+}
+
+.tg-orderbook-wrap {
+  flex: 1 1 auto;
+  min-height: 120px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.tg-orderbook--stack {
+  flex: 1 1 auto;
+  min-height: 140px;
+}
+
+.tg-pane {
+  background: var(--tg-bg-panel);
+  border: none;
+  border-radius: 0;
+  padding: 8px;
+}
+
+.tg-pane-title {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #b8c9df;
+}
+
+.tg-orderbook .tg-pane-title {
+  flex-shrink: 0;
+}
+
+.tg-orderbook.exchangeOrderbookCard {
+  flex: 1;
+  min-height: 0;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tg-orderbook.exchangeOrderbookCard > small {
+  flex-shrink: 0;
+  display: block;
+  margin-bottom: 6px;
+  font-size: 10px;
+  line-height: 1.35;
+  color: #8a9bb5;
+}
+
+.tg-orderbook.exchangeOrderbookCard > .stack {
+  flex-shrink: 0;
+}
+
+.tg-book-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
+  gap: 0;
+  align-items: stretch;
+  flex: 1;
+  min-height: 0;
+}
+
+.tg-book-side {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.tg-book-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--tg-line2);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.tg-book-side-label {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 5px 6px;
+  border-radius: 4px;
+  margin-bottom: 6px;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.tg-book-side-label--ask {
+  color: var(--tg-sell);
+  background: rgba(255, 77, 109, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(255, 77, 109, 0.25);
+}
+
+.tg-book-side-label--bid {
+  color: var(--tg-buy);
+  background: rgba(0, 200, 150, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(0, 200, 150, 0.25);
+}
+
+.tg-book-gutter {
+  align-self: stretch;
+  background: linear-gradient(180deg, transparent, rgba(0, 194, 255, 0.15), transparent);
+  margin: 0 1px;
+}
+
+.tg-book-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 11px;
+}
+
+.tg-book-table th,
+.tg-book-table td {
+  padding: 0 6px;
+  height: 30px;
+  line-height: 1.2;
+  border-bottom: 1px solid var(--tg-line2);
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tg-book-table th {
+  font-size: 10px;
+  color: #8a9bb5;
+  font-weight: 600;
+}
+
+.tg-book-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--tg-bg-panel);
+  box-shadow: 0 1px 0 var(--tg-line2);
+}
+
+.tg-book-table .tg-book-px {
+  white-space: nowrap;
+}
+
+.tg-book-table th:first-child,
+.tg-book-table td:first-child {
+  width: 34%;
+}
+
+.tg-book-table th:nth-child(2),
+.tg-book-table td:nth-child(2) {
+  width: 22%;
+}
+
+.tg-book-side--ask .tg-book-table tbody tr:hover {
+  background: rgba(255, 77, 109, 0.06);
+}
+
+.tg-book-side--bid .tg-book-table tbody tr:hover {
+  background: rgba(0, 200, 150, 0.06);
+}
+
+.tg-book-px--ask {
+  color: #ffb8c6;
+  font-variant-numeric: tabular-nums;
+}
+
+.tg-book-px--bid {
+  color: #9fffdf;
+  font-variant-numeric: tabular-nums;
+}
+
+.tg-book-btn {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.tg-book-btn--sell {
+  border-color: var(--tg-sell) !important;
+  color: #ffd6de !important;
+}
+
+.tg-book-btn--buy {
+  border-color: var(--tg-buy) !important;
+  color: #cfffef !important;
+}
+
+.tg-order-wrap .stack {
+  gap: 10px;
+}
+
+.tg-order-wrap .card {
+  background: #0f1721;
+  border: 1px solid #2b3340;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.tg-bottom-dock {
+  flex: 0 0 min(26vh, 240px);
+  max-height: min(28vh, 260px);
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-top: 1px solid var(--tg-line2);
+  background: var(--tg-bg-mid);
+}
+
+.tg-bottom-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--tg-line2);
+}
+
+.tg-btab {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 7px 6px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: #8a9bb5;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+.tg-btab:hover {
+  color: #dfe8f5;
+  background: rgba(0, 194, 255, 0.06);
+}
+
+.tg-btab--active {
+  color: var(--tg-accent);
+  background: rgba(0, 194, 255, 0.1);
+  box-shadow: inset 0 -2px 0 var(--tg-accent);
+}
+
+.tg-bottom-panel {
+  flex: 1;
+  min-height: 0;
+  padding: 8px 10px;
+  overflow: auto;
+  font-size: 12px;
+}
+
+.tg-bottom-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.tg-stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.tg-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 100px;
+}
+
+.tg-stat-k {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #7d8fa8;
+}
+
+.tg-stat-v {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #e8eef7;
+}
+
+.tg-bottom-hint {
+  margin: 0;
+  font-size: 11px;
+  color: #7d8fa8;
+}
+
+.tg-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.tg-table th,
+.tg-table td {
+  border-bottom: 1px solid var(--tg-line2);
+  padding: 6px 8px;
+}
+
+.tg-muted {
+  color: #5c6b82;
+}
+
+.tg-tape-head {
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #b8c9df;
+}
+
+.tg-tape-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.tg-tape-row {
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.2);
+  border-left: 2px solid var(--tg-accent);
+  animation: tgPulse 0.6s ease-out;
+}
+
+@keyframes tgPulse {
+  from {
+    background: rgba(0, 194, 255, 0.15);
+  }
+  to {
+    background: rgba(0, 0, 0, 0.2);
+  }
+}
+
+.tg-assets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.buyBtn {
+  border-color: var(--tg-buy) !important;
+  background: rgba(0, 200, 150, 0.12) !important;
+  color: #cfffef !important;
+  box-shadow: var(--tg-glow-buy);
+}
+
+.sellBtn {
+  border-color: var(--tg-sell) !important;
+  background: rgba(255, 77, 109, 0.12) !important;
+  color: #ffd6de !important;
+  box-shadow: var(--tg-glow-sell);
+}
+
+.symbolRail-row {
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    transform 0.12s ease;
+}
+
+.symbolRail-row:hover {
+  transform: translateX(2px);
+}
+
+.symbolRail-row--active {
+  border-color: rgba(0, 194, 255, 0.45) !important;
+  background: rgba(0, 194, 255, 0.12) !important;
+  box-shadow: var(--tg-glow-accent);
+}
+
+.symbolRail-chg--up {
+  color: var(--tg-buy);
+}
+
+.symbolRail-chg--down {
+  color: var(--tg-sell);
+}
+
+@media (max-width: 1200px) {
+  .tg-route-split {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+
+  .tg-desk-right {
+    flex-direction: column;
+    border-top: 1px solid var(--tg-line2);
+  }
+
+  .tg-orderbook-wrap,
+  .tg-order-wrap {
+    flex: none;
+    max-height: none;
+  }
+
+  .tg-chart-area,
+  .tg-chart-area .tvEmbedRoot {
+    min-height: 420px;
+  }
+}
+
+@media (max-width: 720px) {
+  .tg-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .tg-symbol-col.symbolRail {
+    position: relative;
+    top: auto;
+    max-height: 200px;
+    border-right: none;
+    border-bottom: 1px solid var(--tg-line2);
+  }
+
+  .tg-header-inner {
+    gap: 6px;
+  }
+
+  .tg-header-field {
+    flex: 1 1 45%;
+  }
+
+  .tg-book-split {
+    grid-template-columns: 1fr;
+  }
+
+  .tg-book-gutter {
+    display: none;
+  }
+
+  .tg-book-side--bid {
+    border-top: 1px solid var(--tg-line2);
+    padding-top: 8px;
+  }
+}
+
+/* —— 레버리지 (프로 패널) —— */
+.tg-lev {
+  padding: 10px;
+  border-radius: var(--tg-radius);
+  border: 1px solid var(--tg-line2);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.tg-lev--compact {
+  padding: 8px;
+}
+
+.tg-lev-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.tg-lev-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8a9bb5;
+}
+
+.tg-lev-value {
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--tg-accent);
+  text-shadow: var(--tg-glow-accent);
+}
+
+.tg-lev-x {
+  margin-left: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.tg-lev-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.tg-lev-chip {
+  padding: 5px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid var(--tg-line2);
+  background: var(--tg-bg-panel);
+  color: #c5d4e8;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+.tg-lev-chip:hover {
+  border-color: rgba(0, 194, 255, 0.35);
+}
+
+.tg-lev-chip--on {
+  border-color: rgba(0, 194, 255, 0.55);
+  background: rgba(0, 194, 255, 0.12);
+  box-shadow: var(--tg-glow-accent);
+  color: #eaf6ff;
+}
+
+.tg-lev-sliderRow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tg-lev--compact .tg-lev-sliderRow {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.tg-lev-slider {
+  width: 100%;
+  height: 6px;
+  accent-color: var(--tg-accent);
+  cursor: pointer;
+}
+
+.tg-lev-stepper {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.tg-lev-step {
+  flex: 0 0 36px;
+  font-size: 16px;
+  font-weight: 700;
+  border-radius: 6px;
+  border: 1px solid var(--tg-line2);
+  background: rgba(255, 255, 255, 0.04);
+  color: #dfeaf8;
+  cursor: pointer;
+}
+
+.tg-lev-step:hover {
+  border-color: rgba(0, 194, 255, 0.35);
+}
+
+.tg-lev-input {
+  flex: 1 1 72px;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  border-radius: 6px;
+  border: 1px solid var(--tg-line2);
+  background: var(--tg-bg-deep);
+  color: #eaf6ff;
+}
+
+.tg-lev-meter {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.tg-lev-meterSeg {
+  height: 4px;
+  border-radius: 999px;
+  opacity: 0.35;
+  transition: opacity 0.15s, box-shadow 0.15s;
+}
+
+.tg-lev-meterSeg--low {
+  background: linear-gradient(90deg, #00c896, #3dd4b0);
+}
+
+.tg-lev-meterSeg--mid {
+  background: linear-gradient(90deg, #e8b339, #f0d060);
+}
+
+.tg-lev-meterSeg--high {
+  background: linear-gradient(90deg, #ff7a5c, #ff4d6d);
+}
+
+.tg-lev-meterSeg--active {
+  opacity: 1;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.15);
+}
+
+.tg-lev-riskNote {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #8a9bb5;
+}
+
+.tg-lev-tier--low {
+  color: var(--tg-buy);
+}
+
+.tg-lev-tier--mid {
+  color: #e8c547;
+}
+
+.tg-lev-tier--high {
+  color: var(--tg-sell);
+}
+
+.tg-lev-riskHint {
+  opacity: 0.9;
+}
+
+.tg-lev-liq {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: #9eb0c9;
+}
+
+.tg-lev-liq strong {
+  color: #dfeaf8;
+  font-variant-numeric: tabular-nums;
+}
+
+.tg-lev-disclaimer {
+  margin: 6px 0 0;
+  font-size: 10px;
+  line-height: 1.35;
+  color: #6b7d94;
+}
+
+.tg-lev--compact .tg-lev-presets {
+  margin-bottom: 8px;
+}
+
+.tg-lev--compact .tg-lev-meter {
+  margin-top: 8px;
+}
+
+.tg-lev--compact .tg-lev-disclaimer {
+  display: none;
+}
+
+/* —— 코인 거래 데스크 —— */
+.tg-crypto-summary {
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: rgba(0, 0, 0, 0.22);
+  border: 1px solid var(--tg-line2);
+  border-radius: var(--tg-radius);
+}
+
+.tg-crypto-summary__head {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8a9bb5;
+  margin-bottom: 8px;
+}
+
+.tg-crypto-sum-list {
+  margin: 0;
+}
+
+.tg-crypto-sum-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 12px;
+}
+
+.tg-crypto-sum-row:last-child {
+  border-bottom: none;
+}
+
+.tg-crypto-sum-row dt {
+  margin: 0;
+  color: #9eb0c9;
+}
+
+.tg-crypto-sum-row dd {
+  margin: 0;
+}
+
+.tg-crypto-sum__v {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: #eaf6ff;
+}
+
+.tg-crypto-sum__v--up {
+  color: var(--tg-buy);
+}
+
+.tg-crypto-sum__v--down {
+  color: var(--tg-sell);
+}
+
+.tg-crypto-entry-tabs {
+  margin-bottom: 10px;
+}
+
+.tg-field--compact {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.tg-field-label {
+  font-size: 11px;
+  color: #8a9bb5;
+}
+
+.tg-comma-input {
+  width: 100%;
+  padding: 8px 10px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  border-radius: 6px;
+  border: 1px solid var(--tg-line2);
+  background: var(--tg-bg-deep);
+  color: #eaf6ff;
+}
+
+.tg-comma-input:focus {
+  outline: none;
+  border-color: rgba(0, 194, 255, 0.45);
+  box-shadow: 0 0 0 1px rgba(0, 194, 255, 0.2);
+}
+
+.tg-crypto-hint {
+  margin: 4px 0 10px;
+  font-size: 12px;
+  color: #9eb0c9;
+}
+
+.tg-crypto-derived,
+.tg-crypto-order-notional,
+.tg-margin-est {
+  text-align: right;
+  font-size: 12px;
+  color: #b8c9df;
+}
+
+.tg-basic-order-card .tg-crypto-order-notional strong {
+  font-variant-numeric: tabular-nums;
+  color: var(--tg-accent);
+}
+
+.tg-submit-order {
+  width: 100%;
+  padding: 11px 14px;
+  margin-top: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 194, 255, 0.35);
+  background: linear-gradient(180deg, rgba(0, 194, 255, 0.18), rgba(0, 194, 255, 0.06));
+  color: #eaf6ff;
+  cursor: pointer;
+}
+
+.tg-submit-order:hover:not(:disabled) {
+  box-shadow: var(--tg-glow-accent);
+}
+
+.tg-submit-order:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.tg-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.tg-pnl--up {
+  color: var(--tg-buy);
+}
+
+.tg-pnl--down {
+  color: var(--tg-sell);
+}
+
+/* —— 레이아웃 1차: 우측 스택 · 컴팩트 주문 · 자산 스트립 —— */
+.tg-asset-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px 10px;
+  margin: 0;
+  border-radius: 0;
+  background: rgba(0, 0, 0, 0.28);
+  border: none;
+  border-bottom: 1px solid var(--tg-line2);
+}
+
+.tg-asset-strip__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-end;
+  text-align: right;
+  min-width: 0;
+}
+
+.tg-asset-strip__k {
+  font-size: 10px;
+  color: #7d8fa8;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.tg-strip-val {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: #eaf6ff;
+}
+
+.tg-strip-val--up {
+  color: var(--tg-buy);
+}
+
+.tg-strip-val--down {
+  color: var(--tg-sell);
+}
+
+.tg-order-compact.tg-basic-order-card {
+  padding: 8px;
+  gap: 6px;
+}
+
+.tg-order-compact .tg-order-wrap .stack {
+  gap: 6px;
+}
+
+.tg-order-compact .tg-order-side-row button {
+  padding: 10px 6px;
+  font-weight: 800;
+  font-size: 13px;
+}
+
+.tg-order-compact .tg-mini-tabs button {
+  padding: 4px 8px !important;
+  font-size: 11px !important;
+  font-weight: 600;
+  border-radius: 6px;
+}
+
+.tg-order-compact .tg-crypto-entry-tabs--compact button {
+  padding: 5px 8px;
+  font-size: 11px;
+}
+
+.tg-compact-avail {
+  margin: 0 0 4px;
+  font-size: 11px;
+  color: #8a9bb5;
+  text-align: right;
+}
+
+.exchangeOrderbookCard.tg-pane.tg-orderbook .tg-pane-title {
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+.exchangeOrderbookCard.tg-pane.tg-orderbook > small {
+  font-size: 9px;
+  margin-bottom: 4px;
+}
+
+.tg-orderbook .tg-book-table {
+  font-size: 11px;
+}
+
+.tg-orderbook .tg-book-table th,
+.tg-orderbook .tg-book-table td {
+  padding: 4px 6px;
 }

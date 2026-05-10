@@ -9,7 +9,7 @@ COPY backend ./backend
 RUN npm ci && npm run build:deploy
 
 ENV NODE_ENV=production
-ENV PORT=4000
-EXPOSE 4000
+ENV PORT=4720
+EXPOSE 4720
 
 CMD ["npm", "run", "start:api"]

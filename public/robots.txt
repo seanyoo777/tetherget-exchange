@@ -1,0 +1,3 @@
+# Tetherget / TGX CEX demo — adjust for production (sitemap, crawl rules).
+User-agent: *
+Allow: /

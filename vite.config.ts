@@ -7,6 +7,11 @@ const contractsSchemasEntry = fileURLToPath(
   new URL("./shared/contracts/src/schemas/index.ts", import.meta.url)
 );
 
+/** 로컬 전용 포트 — Vite 기본(5173)·일반 API(4000)와 섞이지 않도록 고정 */
+const TGX_WEB_PORT = 5720;
+const TGX_PREVIEW_PORT = 5721;
+const TGX_API_ORIGIN = "http://localhost:4720";
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -16,23 +21,23 @@ export default defineConfig({
     ]
   },
   server: {
-    port: 5173,
+    port: TGX_WEB_PORT,
     open: true,
     host: true,
     proxy: {
       "/api": {
-        target: "http://localhost:4000",
+        target: TGX_API_ORIGIN,
         changeOrigin: true
       }
     }
   },
   preview: {
-    port: 4173,
+    port: TGX_PREVIEW_PORT,
     open: true,
     host: true,
     proxy: {
       "/api": {
-        target: "http://localhost:4000",
+        target: TGX_API_ORIGIN,
         changeOrigin: true
       }
     }

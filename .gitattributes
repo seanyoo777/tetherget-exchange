@@ -1,0 +1,16 @@
+# Normalize text files to LF in the repo (reduces Windows CRLF noise in diffs).
+* text=auto eol=lf
+
+# Windows scripts keep CRLF when checked out on Windows if needed locally.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary

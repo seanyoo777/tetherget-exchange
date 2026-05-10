@@ -22,6 +22,9 @@ jobs:
       - name: Unit tests
         run: npm run test
 
+      - name: Completion report (completion-status.json sanity)
+        run: npm run report:completion
+
       - name: Frontend production build
         run: npm run build
 

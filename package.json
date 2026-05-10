@@ -21,9 +21,10 @@
     "build:deploy": "npm --prefix shared/contracts run build && npm --prefix backend run build",
     "start:api": "npm --prefix backend run start",
     "preview": "vite preview --open --host",
-    "preview:full": "npm run build && concurrently -n web,api -c cyan,magenta \"vite preview --host --port 4173\" \"npm run dev --prefix backend\"",
-    "tunnel": "npx --yes localtunnel --port 5173",
-    "tunnel:preview": "npx --yes localtunnel --port 4173",
+    "preview:full": "npm run build && concurrently -n web,api -c cyan,magenta \"vite preview --host --port 5721\" \"npm run dev --prefix backend\"",
+    "tunnel": "npx --yes localtunnel --port 5720",
+    "tunnel:preview": "npx --yes localtunnel --port 5721",
+    "typecheck": "tsc -b",
     "test": "vitest run",
     "report:completion": "node scripts/completion-report.mjs"
   },

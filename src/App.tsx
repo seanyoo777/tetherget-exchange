@@ -34,6 +34,7 @@ import {
   readMarketPrefsFromStorage,
   type MarketGroupKey
 } from "./lib/marketPrefs";
+import { maskSessionTokenPreview } from "./lib/maskSessionToken";
 import { formatHealthProbeTooltip } from "./lib/healthProbeTooltip";
 import { useApiHealthProbe } from "./hooks/useApiHealthProbe";
 import { subscribeBitgetMixBooks15 } from "./lib/bitgetMixWsBook";
@@ -45,60 +46,27 @@ import {
   validateOrder
 } from "./lib/trading";
 import { tradingViewSymbol } from "./lib/tradingViewSymbol";
+import { CommaDecimalInput } from "./components/CommaDecimalInput";
+import { CryptoAssetStrip } from "./components/CryptoAssetStrip";
+import { CryptoAssetSummary } from "./components/CryptoAssetSummary";
+import { LeverageControl } from "./components/LeverageControl";
 import { TradingViewEmbed } from "./components/TradingViewEmbed";
-
-type OrderSide = "LONG" | "SHORT";
-type OrderType = "MARKET" | "LIMIT";
-type OrderUiMode = "BASIC" | "SPEED";
-type SpeedClickMode = "ONE" | "DOUBLE";
-type MitExecMode = "MARKET" | "LIMIT";
-type SpeedOpenOrder = {
-  id: string;
-  side: OrderSide;
-  price: number;
-  qty: number;
-  ocoGroup?: string;
-  ocoRole?: "TP" | "SL";
-};
-type SpeedFill = {
-  id: string;
-  at: string;
-  side: OrderSide;
-  symbol: string;
-  price: number;
-  qty: number;
-  reason: "MANUAL" | "MIT" | "BOOK" | "AUTO_FILL";
-  ocoRole?: "TP" | "SL";
-};
-type SpeedFillFilter = "ALL" | SpeedFill["reason"];
-type SpeedListSort = "LATEST" | "PRICE_ASC" | "PRICE_DESC";
-type SpeedPanelTab = "ORDER" | "AUTO" | "STATUS";
-
-function speedSortLabel(s: SpeedListSort): string {
-  if (s === "LATEST") return "최신순";
-  if (s === "PRICE_ASC") return "가격↑";
-  return "가격↓";
-}
-
-function speedFillFilterLabel(f: SpeedFillFilter): string {
-  const map: Record<SpeedFillFilter, string> = {
-    ALL: "전체",
-    MANUAL: "수동",
-    BOOK: "호가행",
-    MIT: "MIT",
-    AUTO_FILL: "자동체결"
-  };
-  return map[f];
-}
-
-type SpeedMitOrder = {
-  id: string;
-  side: OrderSide;
-  trigger: number;
-  offsetTicks: number;
-  execMode: MitExecMode;
-  qty: number;
-};
+import { formatCommaNumber } from "./lib/formatComma";
+import type {
+  CryptoAssetSummaryModel,
+  MitExecMode,
+  OrderSide,
+  OrderType,
+  OrderUiMode,
+  SpeedClickMode,
+  SpeedFill,
+  SpeedFillFilter,
+  SpeedListSort,
+  SpeedMitOrder,
+  SpeedOpenOrder,
+  SpeedPanelTab,
+  TradePanelProps
+} from "./tradePanelTypes";
 
 type MarketGroupConfig = {
   label: string;
@@ -301,7 +269,24 @@ const CRYPTO_SYMBOL_TICK: Partial<Record<string, number>> = {
   DOGEUSDT: 0.00001
 };
 
-function ShellPage({ title, children }: { title: string; children: ReactNode }) {
+function ShellPage({
+  title,
+  children,
+  bare
+}: {
+  title: string;
+  children: ReactNode;
+  /** 거래 터미널 전체 레이아웃 — 패널 카드 래퍼 없음 */
+  bare?: boolean;
+}) {
+  if (bare) {
+    return (
+      <section className="tg-route-bare" aria-label={title}>
+        <h2 className="visuallyHidden">{title}</h2>
+        {children}
+      </section>
+    );
+  }
   return (
     <section className="panel">
       <h2>{title}</h2>
@@ -310,11 +295,44 @@ function ShellPage({ title, children }: { title: string; children: ReactNode }) 
   );
 }
 
+function speedFillFilterLabel(f: SpeedFillFilter): string {
+  switch (f) {
+    case "ALL":
+      return "전체";
+    case "MANUAL":
+      return "수동";
+    case "BOOK":
+      return "호가행";
+    case "MIT":
+      return "MIT";
+    case "AUTO_FILL":
+      return "자동체결";
+    default:
+      return f;
+  }
+}
+
+function speedSortLabel(s: SpeedListSort): string {
+  switch (s) {
+    case "LATEST":
+      return "최신순";
+    case "PRICE_ASC":
+      return "가격 낮은순";
+    case "PRICE_DESC":
+      return "가격 높은순";
+    default:
+      return s;
+  }
+}
+
 function App() {
   const location = useLocation();
   const [marketGroup, setMarketGroup] = useState<MarketGroupKey>(() => readMarketPrefs().marketGroup);
   const [symbol, setSymbol] = useState(() => readMarketPrefs().symbol);
   const [isPractice, setIsPractice] = useState(true);
+  useEffect(() => {
+    if (location.pathname === "/simulation") setIsPractice(true);
+  }, [location.pathname]);
   const [liveUsdt, setLiveUsdt] = useState(1200);
   const [practiceUsdt, setPracticeUsdt] = useState(50000);
   const [price, setPrice] = useState(103245.5);
@@ -324,6 +342,10 @@ function App() {
   const [cryptoDepthLive, setCryptoDepthLive] = useState(false);
   const [cryptoFundingPct, setCryptoFundingPct] = useState<number | null>(null);
   const [cryptoMarkPrice, setCryptoMarkPrice] = useState<number | null>(null);
+  const [cryptoOrderEntryMode, setCryptoOrderEntryMode] = useState<"PRICE" | "NOTIONAL">("PRICE");
+  const [cryptoNotionalUsdt, setCryptoNotionalUsdt] = useState(1000);
+  const [cryptoDailyRealized, setCryptoDailyRealized] = useState(0);
+  const cryptoRealizedDayRef = useRef<string>(new Date().toDateString());
   const [cryptoDepthFromWs, setCryptoDepthFromWs] = useState(false);
   const cryptoBookWsActive = useRef(false);
   const [exchangePublicHalted, setExchangePublicHalted] = useState(false);
@@ -340,7 +362,7 @@ function App() {
   const [leverage, setLeverage] = useState(5);
   const [side, setSide] = useState<OrderSide>("LONG");
   const [orderType, setOrderType] = useState<OrderType>("MARKET");
-  const [orderUiMode, setOrderUiMode] = useState<OrderUiMode>("SPEED");
+  const [orderUiMode, setOrderUiMode] = useState<OrderUiMode>("BASIC");
   const [limitPrice, setLimitPrice] = useState(price);
   const [positions, setPositions] = useState<string[]>([]);
   const [orders, setOrders] = useState<string[]>([]);
@@ -348,6 +370,20 @@ function App() {
   const [lastEntryPrice, setLastEntryPrice] = useState<number | null>(null);
   const [lastEntrySide, setLastEntrySide] = useState<OrderSide>("LONG");
   const [uiError, setUiError] = useState<string | null>(null);
+  const [orderSubmitting, setOrderSubmitting] = useState(false);
+  /** 실거래 API 한 건 처리 중이면 중복 주문 차단(연속 클릭·단축키 레이스). */
+  const liveOrderInFlightRef = useRef(false);
+  const [loginSubmitting, setLoginSubmitting] = useState(false);
+  const [withdrawalSubmitting, setWithdrawalSubmitting] = useState(false);
+  const [otpVerifySubmitting, setOtpVerifySubmitting] = useState(false);
+  const adminActionInFlightRef = useRef(false);
+  const [adminActionBusy, setAdminActionBusy] = useState(false);
+  const [kycActionId, setKycActionId] = useState<number | null>(null);
+  const [withdrawalDecisionId, setWithdrawalDecisionId] = useState<number | null>(null);
+  const [settlementProgressId, setSettlementProgressId] = useState<number | null>(null);
+  const [cancelOrderSubmitting, setCancelOrderSubmitting] = useState(false);
+  const [ordersSyncSubmitting, setOrdersSyncSubmitting] = useState(false);
+  const ordersSyncInFlightRef = useRef(false);
   const [tournaments, setTournaments] = useState<Tournament[]>([
     {
       id: 1,
@@ -411,6 +447,7 @@ function App() {
   const [authPassword, setAuthPassword] = useState("pass1234");
   const [authUser, setAuthUser] = useState<{ id: number; email: string; role: ApiRole } | null>(null);
   const [authToken, setAuthToken] = useState<string | null>(null);
+  const [showSessionToken, setShowSessionToken] = useState(false);
   const [sessionExpireAt, setSessionExpireAt] = useState<number | null>(null);
   const [orderStatusFilter, setOrderStatusFilter] = useState<"ALL" | ApiOrderStatus>("ALL");
   const [orderPage, setOrderPage] = useState(1);
@@ -451,7 +488,7 @@ function App() {
   const [speedPrice, setSpeedPrice] = useState(price);
   const [speedConfirmOrder, setSpeedConfirmOrder] = useState(false);
   const [speedBookClickMode, setSpeedBookClickMode] = useState<SpeedClickMode>("ONE");
-  const [speedPendingBookKey, setSpeedPendingBookKey] = useState<string | null>(null);
+  const [speedPendingBookKey] = useState<string | null>(null);
   const [speedOpenOrders, setSpeedOpenOrders] = useState<SpeedOpenOrder[]>([]);
   const [speedMultiTicks, setSpeedMultiTicks] = useState(2);
   const [speedMultiCount, setSpeedMultiCount] = useState(3);
@@ -475,6 +512,10 @@ function App() {
   const [speedFillSearch, setSpeedFillSearch] = useState("");
   const [speedOpenWarnThreshold, setSpeedOpenWarnThreshold] = useState(10);
   const [speedMitWarnThreshold, setSpeedMitWarnThreshold] = useState(5);
+  /** 하단 데스크 탭: 포지션 / 체결 / 미체결 / 자산 */
+  const [deskBottomTab, setDeskBottomTab] = useState<"POSITIONS" | "FILLS" | "ORDERS" | "ASSETS">(
+    "POSITIONS"
+  );
   const [speedEventNotice, setSpeedEventNotice] = useState("");
   const [marketLiveVolume, setMarketLiveVolume] = useState<number | null>(null);
   /** 마지막 시세 폴링(또는 모의 갱신) 시각 ms — 레일에 표시 */
@@ -593,7 +634,7 @@ function App() {
         speedOpenWarnThreshold?: number;
         speedMitWarnThreshold?: number;
       };
-      if (parsed.orderUiMode) setOrderUiMode(parsed.orderUiMode);
+      if (parsed.orderUiMode && parsed.orderUiMode !== "SPEED") setOrderUiMode(parsed.orderUiMode);
       if (Number.isFinite(parsed.speedQty)) setSpeedQty(Number(parsed.speedQty));
       if (Number.isFinite(parsed.speedPrice)) setSpeedPrice(Number(parsed.speedPrice));
       if (typeof parsed.speedConfirmOrder === "boolean") setSpeedConfirmOrder(parsed.speedConfirmOrder);
@@ -1072,6 +1113,7 @@ function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (orderUiMode !== "SPEED") return;
+      if (orderSubmitting) return;
       if (e.key === "F1") {
         e.preventDefault();
         setSide("SHORT");
@@ -1087,7 +1129,7 @@ function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [location.pathname, orderUiMode, submitOrder]);
+  }, [location.pathname, orderUiMode, orderSubmitting, submitOrder]);
 
   useEffect(() => {
     if (!speedMitEnabled || orderUiMode !== "SPEED" || speedMitOrders.length === 0) return;
@@ -1100,17 +1142,20 @@ function App() {
     }
     if (triggered.length === 0) return;
     setSpeedMitOrders(remaining);
-    triggered.forEach((m) => {
-      const offset = m.offsetTicks * tickSize;
-      const execPx = m.side === "LONG" ? price + offset : price - offset;
-      submitOrder({
-        side: m.side,
-        orderType: m.execMode === "MARKET" ? "MARKET" : "LIMIT",
-        qty: m.qty,
-        price: snapPrice(Math.max(tickSize, execPx)),
-        reason: "MIT"
-      });
-    });
+    void (async () => {
+      for (const m of triggered) {
+        const offset = m.offsetTicks * tickSize;
+        const execPx = m.side === "LONG" ? price + offset : price - offset;
+        // eslint-disable-next-line no-await-in-loop — 실거래 시 한 건씩 순차 전송
+        await submitOrder({
+          side: m.side,
+          orderType: m.execMode === "MARKET" ? "MARKET" : "LIMIT",
+          qty: m.qty,
+          price: snapPrice(Math.max(tickSize, execPx)),
+          reason: "MIT"
+        });
+      }
+    })();
   }, [orderUiMode, price, snapPrice, speedMitEnabled, speedMitOrders, submitOrder, tickSize]);
 
   useEffect(() => {
@@ -1162,7 +1207,35 @@ function App() {
     return (p * q) / leverage;
   }, [orderType, price, limitPrice, qty, leverage, orderUiMode, speedQty]);
 
+  useEffect(() => {
+    const d = new Date().toDateString();
+    if (d !== cryptoRealizedDayRef.current) {
+      cryptoRealizedDayRef.current = d;
+      setCryptoDailyRealized(0);
+    }
+  }, [price, cryptoMarkPrice, symbol]);
+
+  useEffect(() => {
+    if (marketGroup !== "CRYPTO") return;
+    if (orderUiMode !== "BASIC") return;
+    if (cryptoOrderEntryMode !== "NOTIONAL") return;
+    const refPx = orderType === "MARKET" ? price : limitPrice;
+    if (!Number.isFinite(refPx) || refPx <= 0) return;
+    const nextQ = cryptoNotionalUsdt / refPx;
+    setQty((prev) => (Math.abs(prev - nextQ) < 1e-14 ? prev : nextQ));
+  }, [
+    marketGroup,
+    orderUiMode,
+    cryptoOrderEntryMode,
+    orderType,
+    price,
+    limitPrice,
+    cryptoNotionalUsdt
+  ]);
+
   const handleLogin = async () => {
+    if (loginSubmitting) return;
+    setLoginSubmitting(true);
     try {
       const data = await login(authEmail, authPassword);
       const expireAt = Date.now() + 1000 * 60 * 60;
@@ -1183,12 +1256,28 @@ function App() {
       }
       setUiError("백엔드 로그인에 실패했습니다. 서버 실행 상태를 확인하세요.");
       setBackendConnected(false);
+    } finally {
+      setLoginSubmitting(false);
     }
   };
 
   const handleLogout = () => {
     setAuthUser(null);
     setAuthToken(null);
+    setShowSessionToken(false);
+    setOrderSubmitting(false);
+    liveOrderInFlightRef.current = false;
+    setLoginSubmitting(false);
+    setWithdrawalSubmitting(false);
+    setOtpVerifySubmitting(false);
+    adminActionInFlightRef.current = false;
+    setAdminActionBusy(false);
+    setKycActionId(null);
+    setWithdrawalDecisionId(null);
+    setSettlementProgressId(null);
+    setCancelOrderSubmitting(false);
+    setOrdersSyncSubmitting(false);
+    ordersSyncInFlightRef.current = false;
     setSessionExpireAt(null);
     localStorage.removeItem("tetherget-session");
   };
@@ -1206,6 +1295,8 @@ function App() {
       setUiError("출금 요청은 로그인 후 가능합니다.");
       return;
     }
+    if (withdrawalSubmitting) return;
+    setWithdrawalSubmitting(true);
     try {
       const row = await createWithdrawal(
         { userId: authUser.id, amount: withdrawAmount, address: withdrawAddress },
@@ -1219,6 +1310,8 @@ function App() {
         return;
       }
       setUiError("출금 요청 실패");
+    } finally {
+      setWithdrawalSubmitting(false);
     }
   };
 
@@ -1228,16 +1321,21 @@ function App() {
       setUiError("출금 승인/거절 전 OTP 인증이 필요합니다.");
       return;
     }
+    setWithdrawalDecisionId(id);
     try {
-      const next = await decideAdminWithdrawal(authUser.role, id, decision, authToken ?? undefined, otpToken);
-      setWithdrawals((prev) => prev.map((w) => (w.id === id ? next : w)));
-      setUiError(null);
-    } catch (error) {
-      if (error instanceof Error && error.message.startsWith("AUTH_ERROR:")) {
-        handleAuthError();
-        return;
+      try {
+        const next = await decideAdminWithdrawal(authUser.role, id, decision, authToken ?? undefined, otpToken);
+        setWithdrawals((prev) => prev.map((w) => (w.id === id ? next : w)));
+        setUiError(null);
+      } catch (error) {
+        if (error instanceof Error && error.message.startsWith("AUTH_ERROR:")) {
+          handleAuthError();
+          return;
+        }
+        setUiError("출금 승인 처리 실패");
       }
-      setUiError("출금 승인 처리 실패");
+    } finally {
+      setWithdrawalDecisionId(null);
     }
   };
 
@@ -1246,6 +1344,8 @@ function App() {
       setUiError("OTP 인증은 로그인 후 가능합니다.");
       return;
     }
+    if (otpVerifySubmitting) return;
+    setOtpVerifySubmitting(true);
     try {
       const res = await verifyAdminOtp(authUser.role, otpCode, authToken ?? undefined);
       setOtpToken(res.otpToken);
@@ -1258,10 +1358,15 @@ function App() {
         return;
       }
       setUiError("OTP 인증 실패");
+    } finally {
+      setOtpVerifySubmitting(false);
     }
   };
 
   const syncOrdersFromBackend = async () => {
+    if (ordersSyncInFlightRef.current) return;
+    ordersSyncInFlightRef.current = true;
+    setOrdersSyncSubmitting(true);
     try {
       const data = await getOrders(
         {
@@ -1295,6 +1400,9 @@ function App() {
       }
       setUiError("주문 이력 동기화 실패");
       setBackendConnected(false);
+    } finally {
+      ordersSyncInFlightRef.current = false;
+      setOrdersSyncSubmitting(false);
     }
   };
 
@@ -1310,12 +1418,26 @@ function App() {
     }
   };
 
+  const runAdminAction = async (fn: () => Promise<void>) => {
+    if (adminActionInFlightRef.current) return;
+    adminActionInFlightRef.current = true;
+    setAdminActionBusy(true);
+    try {
+      await fn();
+    } finally {
+      adminActionInFlightRef.current = false;
+      setAdminActionBusy(false);
+    }
+  };
+
   const cancelBackendLimitOrder = async () => {
     const id = Number(pendingCancelOrderId);
     if (!authUser || !authToken || !Number.isFinite(id) || id < 1) {
       setUiError("로그인 후 취소할 서버 주문 ID(숫자)를 입력하세요.");
       return;
     }
+    if (cancelOrderSubmitting) return;
+    setCancelOrderSubmitting(true);
     try {
       const r = await cancelOrder(id, authToken);
       setUiError(null);
@@ -1332,6 +1454,8 @@ function App() {
         return;
       }
       setUiError("주문 취소 실패 (미체결·접수 상태만 가능)");
+    } finally {
+      setCancelOrderSubmitting(false);
     }
   };
 
@@ -1373,6 +1497,10 @@ function App() {
       return;
     }
     setUiError(null);
+    if (marketGroup === "CRYPTO") {
+      const fee = currentOrderPrice * submitQty * 0.0004;
+      setCryptoDailyRealized((r) => r - fee);
+    }
     const label = `${isPractice ? "모의" : "실거래"} ${submitSide} ${submitQty} ${symbol} @ ${
       submitType === "MARKET" ? "MKT" : currentOrderPrice
     } x${leverage}`;
@@ -1417,6 +1545,9 @@ function App() {
     }
     let suppressLocalTradeReceipt = false;
     if (!isPractice && authUser) {
+      if (liveOrderInFlightRef.current) return;
+      liveOrderInFlightRef.current = true;
+      setOrderSubmitting(true);
       try {
         const result = await postOrder(
           {
@@ -1458,6 +1589,9 @@ function App() {
         }
         setUiError("백엔드 주문 연동 실패. 서버를 확인하세요.");
         return;
+      } finally {
+        liveOrderInFlightRef.current = false;
+        setOrderSubmitting(false);
       }
     }
 
@@ -1561,55 +1695,65 @@ function App() {
       setUiError("KYC 상태 변경 전 OTP 인증이 필요합니다.");
       return;
     }
-    if (authUser && (authUser.role === "SUPER_ADMIN" || authUser.role === "CS_ADMIN")) {
-      try {
-        const next = await updateAdminKycStatus(authUser.role, id, status, authToken ?? undefined, otpToken);
-        setKycTickets((prev) => prev.map((row) => (row.id === id ? next : row)));
-      } catch (error) {
-        if (error instanceof Error && error.message.startsWith("AUTH_ERROR:")) {
-          handleAuthError();
+    setKycActionId(id);
+    try {
+      if (authUser && (authUser.role === "SUPER_ADMIN" || authUser.role === "CS_ADMIN")) {
+        try {
+          const next = await updateAdminKycStatus(authUser.role, id, status, authToken ?? undefined, otpToken);
+          setKycTickets((prev) => prev.map((row) => (row.id === id ? next : row)));
+        } catch (error) {
+          if (error instanceof Error && error.message.startsWith("AUTH_ERROR:")) {
+            handleAuthError();
+            return;
+          }
+          setUiError("KYC 상태 변경 API 호출 실패");
           return;
         }
-        setUiError("KYC 상태 변경 API 호출 실패");
-        return;
+      } else {
+        setKycTickets((prev) => prev.map((row) => (row.id === id ? { ...row, status } : row)));
       }
-    } else {
-      setKycTickets((prev) => prev.map((row) => (row.id === id ? { ...row, status } : row)));
+      setAuditLogs((prev) => [`KYC_UPDATED: ${id} => ${status}`, ...prev].slice(0, 30));
+    } finally {
+      setKycActionId(null);
     }
-    setAuditLogs((prev) => [`KYC_UPDATED: ${id} => ${status}`, ...prev].slice(0, 30));
   };
 
   const cycleSettlement = async (id: number) => {
-    if (authUser && (authUser.role === "SUPER_ADMIN" || authUser.role === "OPS_ADMIN")) {
-      try {
-        const next = await progressSettlement(authUser.role, id, authToken ?? undefined, otpToken ?? undefined);
-        setSettlementBatches((prev) => prev.map((row) => (row.id === id ? next : row)));
-        setBackendConnected(true);
-      } catch (error) {
-        if (error instanceof Error && error.message.startsWith("AUTH_ERROR:")) {
-          handleAuthError();
-          return;
+    setSettlementProgressId(id);
+    try {
+      if (authUser && (authUser.role === "SUPER_ADMIN" || authUser.role === "OPS_ADMIN")) {
+        try {
+          const next = await progressSettlement(authUser.role, id, authToken ?? undefined, otpToken ?? undefined);
+          setSettlementBatches((prev) => prev.map((row) => (row.id === id ? next : row)));
+          setBackendConnected(true);
+        } catch (error) {
+          if (error instanceof Error && error.message.startsWith("AUTH_ERROR:")) {
+            handleAuthError();
+            return;
+          }
+          setUiError("정산 상태 진행 API 호출 실패");
+          setBackendConnected(false);
         }
-        setUiError("정산 상태 진행 API 호출 실패");
-        setBackendConnected(false);
-      }
-    } else {
-      setSettlementBatches((prev) =>
-        prev.map((batch) => {
-          if (batch.id !== id) {
+      } else {
+        setSettlementBatches((prev) =>
+          prev.map((batch) => {
+            if (batch.id !== id) {
+              return batch;
+            }
+            if (batch.status === "READY") {
+              return { ...batch, status: "LOCKED" };
+            }
+            if (batch.status === "LOCKED") {
+              return { ...batch, status: "PAID" };
+            }
             return batch;
-          }
-          if (batch.status === "READY") {
-            return { ...batch, status: "LOCKED" };
-          }
-          if (batch.status === "LOCKED") {
-            return { ...batch, status: "PAID" };
-          }
-          return batch;
-        })
-      );
+          })
+        );
+      }
+      setAuditLogs((prev) => [`SETTLEMENT_BATCH_PROGRESS: ${id}`, ...prev].slice(0, 30));
+    } finally {
+      setSettlementProgressId(null);
     }
-    setAuditLogs((prev) => [`SETTLEMENT_BATCH_PROGRESS: ${id}`, ...prev].slice(0, 30));
   };
 
   const toggleRiskRule = (id: number) => {
@@ -1678,10 +1822,52 @@ function App() {
     setAuditLogs((prev) => [`NOTICE_TOGGLED: ${id}`, ...prev].slice(0, 30));
   };
 
+  const cryptoMarkPx = useMemo(() => {
+    if (marketGroup === "CRYPTO") return cryptoMarkPrice ?? price;
+    return price;
+  }, [marketGroup, cryptoMarkPrice, price]);
+
   const simulatedLiqPrice =
     lastEntryPrice !== null ? calcLiquidationPrice(lastEntryPrice, leverage, lastEntrySide) : null;
   const simulatedPnl =
-    lastEntryPrice !== null ? calcUnrealizedPnl(lastEntryPrice, price, qty, lastEntrySide) : null;
+    lastEntryPrice !== null ? calcUnrealizedPnl(lastEntryPrice, cryptoMarkPx, qty, lastEntrySide) : null;
+
+  const cryptoSummaryModel = useMemo((): CryptoAssetSummaryModel | undefined => {
+    if (marketGroup !== "CRYPTO") return undefined;
+    const ur = simulatedPnl ?? 0;
+    const posEval = lastEntryPrice !== null ? qty * cryptoMarkPx : 0;
+    const myEval = activeBalance + posEval + ur;
+    const total = activeBalance + posEval + ur;
+    return {
+      available: activeBalance,
+      dailyRealized: cryptoDailyRealized,
+      positionEval: posEval,
+      unrealized: ur,
+      myEvaluation: myEval,
+      totalAssets: total
+    };
+  }, [
+    marketGroup,
+    simulatedPnl,
+    lastEntryPrice,
+    qty,
+    cryptoMarkPx,
+    activeBalance,
+    cryptoDailyRealized
+  ]);
+
+  const cryptoCompactSummary = useMemo(() => {
+    if (marketGroup !== "CRYPTO") return undefined;
+    const ur = simulatedPnl ?? 0;
+    const posEval = lastEntryPrice !== null ? qty * cryptoMarkPx : 0;
+    const total = activeBalance + posEval + ur;
+    return {
+      totalAssets: total,
+      dailyProfit: cryptoDailyRealized,
+      positionEval: posEval
+    };
+  }, [marketGroup, simulatedPnl, lastEntryPrice, qty, cryptoMarkPx, activeBalance, cryptoDailyRealized]);
+
   const adminKpi = useMemo(() => {
     const filledCount = orders.filter(
       (o) => o.includes("[FILLED]") || o.includes("[PARTIALLY_FILLED]")
@@ -1752,26 +1938,6 @@ function App() {
     notifySpeedEvent(`체결 로그 CSV ${rows.length}건 내보내기 완료`);
   };
 
-  const submitSpeedBookOrder = async (bookSide: OrderSide, targetPrice: number) => {
-    const key = `${bookSide}-${targetPrice}`;
-    if (speedBookClickMode === "DOUBLE" && speedPendingBookKey !== key) {
-      setSpeedPendingBookKey(key);
-      return;
-    }
-    setSpeedPendingBookKey(null);
-    if (speedConfirmOrder) {
-      const ok = window.confirm(`${bookSide} ${symbol} ${speedQty} @ ${targetPrice} 주문 실행할까요?`);
-      if (!ok) return;
-    }
-    await submitOrder({
-      side: bookSide,
-      orderType: "LIMIT",
-      qty: speedQty,
-      price: targetPrice,
-      reason: "BOOK"
-    });
-  };
-
   const amendLatestSpeedOrder = () => {
     setSpeedOpenOrders((prev) => {
       if (prev.length === 0) return prev;
@@ -1829,6 +1995,99 @@ function App() {
     notifySpeedEvent("MIT 대기 주문 1건 취소");
   };
 
+  const sharedTradePanelProps: TradePanelProps = {
+    activeBalance,
+    qty,
+    setQty,
+    leverage,
+    setLeverage,
+    side,
+    setSide,
+    orderType,
+    setOrderType,
+    limitPrice,
+    setLimitPrice,
+    estimatedCost,
+    submitOrder,
+    orderSubmitting,
+    allowLeverage: marketGroup === "US_FUTURES",
+    orderUiMode,
+    setOrderUiMode,
+    speedQty,
+    setSpeedQty,
+    speedPrice,
+    setSpeedPrice,
+    symbol,
+    tickSize,
+    marketPrice: price,
+    speedOpenOrders: sortedSpeedOpenOrders,
+    onAmendLatestSpeedOrder: amendLatestSpeedOrder,
+    onCancelAllSpeedOrders: cancelAllSpeedOrders,
+    onAmendSpeedOrderById: amendSpeedOrderById,
+    onCancelSpeedOrderById: cancelSpeedOrderById,
+    speedPendingBookKey,
+    speedMultiTicks,
+    setSpeedMultiTicks,
+    speedMultiCount,
+    setSpeedMultiCount,
+    placeSpeedMultiOrders,
+    speedMitEnabled,
+    setSpeedMitEnabled,
+    speedMitTrigger,
+    setSpeedMitTrigger,
+    speedMitOffsetTicks,
+    setSpeedMitOffsetTicks,
+    speedMitExecMode,
+    setSpeedMitExecMode,
+    registerMitOrder,
+    cancelMitOrderById,
+    speedMitOrders: sortedSpeedMitOrders,
+    speedUseOco,
+    setSpeedUseOco,
+    speedTpTicks,
+    setSpeedTpTicks,
+    speedSlTicks,
+    setSpeedSlTicks,
+    speedFills: sortedSpeedFills,
+    speedBottomTab,
+    setSpeedBottomTab,
+    speedFillFilter,
+    setSpeedFillFilter,
+    speedOpenSort,
+    setSpeedOpenSort,
+    speedMitSort,
+    setSpeedMitSort,
+    speedFillSort,
+    setSpeedFillSort,
+    exportSpeedFillsCsv,
+    formatKst,
+    marketGroupLabel: marketCfg.label,
+    speedToggleConfirm,
+    setSpeedToggleConfirm,
+    speedPanelTab,
+    setSpeedPanelTab,
+    speedSummaryCollapsed,
+    setSpeedSummaryCollapsed,
+    speedFillSearch,
+    setSpeedFillSearch,
+    speedOpenWarnThreshold,
+    setSpeedOpenWarnThreshold,
+    speedMitWarnThreshold,
+    setSpeedMitWarnThreshold,
+    futuresContractMode: marketGroup === "US_FUTURES",
+    ...(marketGroup === "CRYPTO"
+      ? {
+          isCryptoDesk: true,
+          cryptoOrderEntryMode,
+          setCryptoOrderEntryMode,
+          cryptoNotionalUsdt,
+          setCryptoNotionalUsdt,
+          cryptoAssetSummary: cryptoSummaryModel,
+          cryptoSummaryDetached: true
+        }
+      : {})
+  };
+
   const tradingShellPaths = ["/exchange", "/spot", "/futures", "/simulation"];
   const showSymbolRail = tradingShellPaths.includes(location.pathname);
   const futuresTabActive =
@@ -1849,8 +2108,8 @@ function App() {
   );
 
   const orderBookCard = (
-    <div className="card exchangeOrderbookCard">
-      <h3>오더북</h3>
+    <div className="tg-pane tg-orderbook exchangeOrderbookCard">
+      <h3 className="tg-pane-title">오더북</h3>
       <small>
         오더북 모드:{" "}
         {dataGrade.orderbook === "MOCK"
@@ -1861,133 +2120,381 @@ function App() {
               : "Bitget USDT-M 호가 (REST 스냅샷)"
             : "외부호가"}
       </small>
-      {orderUiMode === "SPEED" ? (
-        <div className="stack">
-          <small>스피드북: 행 버튼으로 즉시 주문</small>
-          <div className="twoCol">
-            <label>
-              클릭 모드
-              <select
-                value={speedBookClickMode}
-                onChange={(e) => setSpeedBookClickMode(e.target.value as SpeedClickMode)}
-              >
-                <option value="ONE">1클릭</option>
-                <option value="DOUBLE">더블클릭</option>
-              </select>
-            </label>
-            <label>
-              주문확인
-              <select
-                value={speedConfirmOrder ? "ON" : "OFF"}
-                onChange={(e) => setSpeedConfirmOrder(e.target.value === "ON")}
-              >
-                <option value="OFF">OFF</option>
-                <option value="ON">ON</option>
-              </select>
-            </label>
-          </div>
-          {dataGrade.orderbook === "MOCK" ? (
-            <small className="orderbookWarn">
-              MOCK 호가 기반 주문입니다. 실제 거래소 호가와 체결 결과가 다를 수 있습니다.
-            </small>
-          ) : null}
-        </div>
+      {dataGrade.orderbook === "MOCK" ? (
+        <small className="orderbookWarn">
+          MOCK 호가입니다. 실제 거래소 깊이와 다를 수 있습니다.
+        </small>
       ) : null}
-      <table>
-        <thead>
-          <tr>
-            <th>ASK</th>
-            <th>{qtyLabel}</th>
-            {isFuturesGroup ? <th>매도명목(USD)</th> : null}
-            {isStockGroup ? <th>매도잔량비</th> : null}
-            {isCryptoGroup ? <th>매도노셔널(USDT)</th> : null}
-            <th>BID</th>
-            <th>{qtyLabel}</th>
-            {isFuturesGroup ? <th>매수명목(USD)</th> : null}
-            {isStockGroup ? <th>매수잔량비</th> : null}
-            {isCryptoGroup ? <th>매수노셔널(USDT)</th> : null}
-            {orderUiMode === "SPEED" ? <th>주문</th> : null}
-          </tr>
-        </thead>
-        <tbody>
-          {orderBook.map((row) => (
-            <tr key={`${row.ask}-${row.bid}`}>
-              <td>{row.ask.toLocaleString()}</td>
-              <td>{formatBookQty(row.askQty)}</td>
-              {isFuturesGroup ? (
-                <td>
-                  {symbolContractSpec
-                    ? Math.round(row.ask * row.askQty * symbolContractSpec.multiplier).toLocaleString()
-                    : "-"}
-                </td>
-              ) : null}
-              {isStockGroup ? (
-                <td>{((row.askQty / Math.max(1, row.askQty + row.bidQty)) * 100).toFixed(1)}%</td>
-              ) : null}
-              {isCryptoGroup ? <td>{(row.ask * row.askQty).toFixed(1)}</td> : null}
-              <td>{row.bid.toLocaleString()}</td>
-              <td>{formatBookQty(row.bidQty)}</td>
-              {isFuturesGroup ? (
-                <td>
-                  {symbolContractSpec
-                    ? Math.round(row.bid * row.bidQty * symbolContractSpec.multiplier).toLocaleString()
-                    : "-"}
-                </td>
-              ) : null}
-              {isStockGroup ? (
-                <td>{((row.bidQty / Math.max(1, row.askQty + row.bidQty)) * 100).toFixed(1)}%</td>
-              ) : null}
-              {isCryptoGroup ? <td>{(row.bid * row.bidQty).toFixed(1)}</td> : null}
-              {orderUiMode === "SPEED" ? (
-                <td>
-                  <div className="rowActions">
-                    <button className="ghost" onClick={() => submitSpeedBookOrder("SHORT", row.ask)}>
-                      매도
-                    </button>
-                    <button onClick={() => submitSpeedBookOrder("LONG", row.bid)}>매수</button>
+      <div className="tg-book-split">
+        <div className="tg-book-side tg-book-side--ask">
+          <div className="tg-book-side-label tg-book-side-label--ask">매도 ASK</div>
+          <div className="tg-book-scroll">
+          <table className="tg-book-table">
+            <caption className="visuallyHidden">{symbol} 매도 호가</caption>
+            <thead>
+              <tr>
+                <th>가격</th>
+                <th>{qtyLabel}</th>
+                {isFuturesGroup ? <th>명목(USD)</th> : null}
+                {isStockGroup ? <th>잔량비</th> : null}
+                {isCryptoGroup ? <th>노셔널</th> : null}
+              </tr>
+            </thead>
+            <tbody>
+              {orderBook.map((row) => (
+                <tr key={`ask-${row.ask}-${row.bid}`}>
+                  <td className="tg-book-px tg-book-px--ask">{row.ask.toLocaleString()}</td>
+                  <td>{formatBookQty(row.askQty)}</td>
+                  {isFuturesGroup ? (
+                    <td>
+                      {symbolContractSpec
+                        ? Math.round(row.ask * row.askQty * symbolContractSpec.multiplier).toLocaleString()
+                        : "-"}
+                    </td>
+                  ) : null}
+                  {isStockGroup ? (
+                    <td>{((row.askQty / Math.max(1, row.askQty + row.bidQty)) * 100).toFixed(1)}%</td>
+                  ) : null}
+                  {isCryptoGroup ? <td>{(row.ask * row.askQty).toFixed(1)}</td> : null}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          </div>
+        </div>
+        <div className="tg-book-gutter" aria-hidden />
+        <div className="tg-book-side tg-book-side--bid">
+          <div className="tg-book-side-label tg-book-side-label--bid">매수 BID</div>
+          <div className="tg-book-scroll">
+          <table className="tg-book-table">
+            <caption className="visuallyHidden">{symbol} 매수 호가</caption>
+            <thead>
+              <tr>
+                <th>가격</th>
+                <th>{qtyLabel}</th>
+                {isFuturesGroup ? <th>명목(USD)</th> : null}
+                {isStockGroup ? <th>잔량비</th> : null}
+                {isCryptoGroup ? <th>노셔널</th> : null}
+              </tr>
+            </thead>
+            <tbody>
+              {orderBook.map((row) => (
+                <tr key={`bid-${row.ask}-${row.bid}`}>
+                  <td className="tg-book-px tg-book-px--bid">{row.bid.toLocaleString()}</td>
+                  <td>{formatBookQty(row.bidQty)}</td>
+                  {isFuturesGroup ? (
+                    <td>
+                      {symbolContractSpec
+                        ? Math.round(row.bid * row.bidQty * symbolContractSpec.multiplier).toLocaleString()
+                        : "-"}
+                    </td>
+                  ) : null}
+                  {isStockGroup ? (
+                    <td>{((row.bidQty / Math.max(1, row.askQty + row.bidQty)) * 100).toFixed(1)}%</td>
+                  ) : null}
+                  {isCryptoGroup ? <td>{(row.bid * row.bidQty).toFixed(1)}</td> : null}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderTradingDesk = (tpOverrides: Partial<TradePanelProps>) => (
+    <div className="tg-route-split">
+      <div className="tg-desk-center">
+        <div className="tg-chart-toolbar">
+          <span className="tg-chart-pair">{symbol}</span>
+          <span className="tg-chart-price">
+            {price.toLocaleString(undefined, { maximumFractionDigits: Math.max(2, decimals) })}
+          </span>
+          <span className={marketChange >= 0 ? "tg-chg tg-chg--up" : "tg-chg tg-chg--down"}>
+            {marketChange >= 0 ? "+" : ""}
+            {marketChange.toFixed(2)}%
+          </span>
+          <span className="tg-chart-badges">
+            <span
+              className={`tg-mini-badge tg-mini-badge--${dataGrade.ticker.toLowerCase()}`}
+              title={tickerGradeReason}
+            >
+              {dataGrade.ticker}
+            </span>
+            <span
+              className={`tg-mini-badge tg-mini-badge--${dataGrade.orderbook.toLowerCase()}`}
+              title={bookGradeReason}
+            >
+              {dataGrade.orderbook}
+            </span>
+          </span>
+          <span className="tg-chart-meta">
+            {marketCfg.label} · {apiStatus === "CONNECTED" ? marketCfg.sourceLabel : "Fallback"}
+          </span>
+        </div>
+        <div className="tg-chart-area">
+          {tvChartSymbol ? (
+            <TradingViewEmbed tvSymbol={tvChartSymbol} />
+          ) : (
+            <div className="tg-chart-placeholder" role="status">
+              TradingView 차트를 표시할 매핑이 없습니다. (예: 암호화폐 USDT 페어)
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="tg-desk-right tg-desk-right--stack">
+        {isCryptoGroup ? (
+          <>
+            <div className="tg-order-wrap tg-order-wrap--stack">
+              <TradePanel {...{ ...sharedTradePanelProps, ...tpOverrides }} />
+            </div>
+            {cryptoCompactSummary ? (
+              <div className="tg-crypto-asset-strip">
+                <CryptoAssetStrip model={cryptoCompactSummary} />
+              </div>
+            ) : null}
+            <div className="tg-orderbook-wrap tg-orderbook--stack">{orderBookCard}</div>
+          </>
+        ) : (
+          <>
+            <div className="tg-order-wrap">
+              <TradePanel {...{ ...sharedTradePanelProps, ...tpOverrides }} />
+            </div>
+            <div className="tg-orderbook-wrap">{orderBookCard}</div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+
+  const deskBottomPanel = (
+    <div className="tg-bottom-dock">
+      <div className="tg-bottom-tabs" role="tablist" aria-label="포지션·체결·주문·자산">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={deskBottomTab === "POSITIONS"}
+          className={deskBottomTab === "POSITIONS" ? "tg-btab tg-btab--active" : "tg-btab"}
+          onClick={() => setDeskBottomTab("POSITIONS")}
+        >
+          포지션
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={deskBottomTab === "FILLS"}
+          className={deskBottomTab === "FILLS" ? "tg-btab tg-btab--active" : "tg-btab"}
+          onClick={() => setDeskBottomTab("FILLS")}
+        >
+          체결내역
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={deskBottomTab === "ORDERS"}
+          className={deskBottomTab === "ORDERS" ? "tg-btab tg-btab--active" : "tg-btab"}
+          onClick={() => setDeskBottomTab("ORDERS")}
+        >
+          미체결
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={deskBottomTab === "ASSETS"}
+          className={deskBottomTab === "ASSETS" ? "tg-btab tg-btab--active" : "tg-btab"}
+          onClick={() => setDeskBottomTab("ASSETS")}
+        >
+          자산현황
+        </button>
+      </div>
+      <div className="tg-bottom-panel">
+        {deskBottomTab === "POSITIONS" ? (
+          <div className="tg-bottom-grid">
+            <div className="tg-stat-row">
+              <div className="tg-stat">
+                <span className="tg-stat-k">예상 청산가</span>
+                <span className="tg-stat-v tg-num">
+                  {simulatedLiqPrice != null ? formatCommaNumber(simulatedLiqPrice, 4) : "—"}
+                </span>
+              </div>
+              <div className="tg-stat">
+                <span className="tg-stat-k">미실현 손익</span>
+                <span
+                  className={`tg-stat-v tg-num${
+                    (simulatedPnl ?? 0) > 0 ? " tg-pnl--up" : (simulatedPnl ?? 0) < 0 ? " tg-pnl--down" : ""
+                  }`}
+                >
+                  {formatCommaNumber(simulatedPnl ?? 0, 4)} USDT
+                </span>
+              </div>
+              {isCryptoGroup ? (
+                <>
+                  <div className="tg-stat">
+                    <span className="tg-stat-k">펀딩(예상)</span>
+                    <span className="tg-stat-v">
+                      {cryptoFundingPct != null ? `${cryptoFundingPct.toFixed(4)}%` : "—"}
+                    </span>
                   </div>
-                </td>
+                  <div className="tg-stat">
+                    <span className="tg-stat-k">마크</span>
+                    <span className="tg-stat-v">
+                      {cryptoMarkPrice != null
+                        ? cryptoMarkPrice.toLocaleString(undefined, { maximumFractionDigits: Math.max(2, decimals) })
+                        : "—"}
+                    </span>
+                  </div>
+                </>
               ) : null}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+            </div>
+            {marketGroup === "US_FUTURES" && symbolContractSpec ? (
+              <p className="tg-bottom-hint">
+                계약 {symbolContractSpec.name} · 승수 {symbolContractSpec.multiplier} {symbolContractSpec.unit}
+              </p>
+            ) : null}
+            {isCryptoGroup && exchangeSimMids[symbol.trim().toUpperCase()] != null ? (
+              <p className="tg-bottom-hint">
+                서버 시뮬 중간가: {exchangeSimMids[symbol.trim().toUpperCase()].toLocaleString()} USDT
+              </p>
+            ) : null}
+            <table className="tg-table">
+              <caption className="visuallyHidden">포지션 요약</caption>
+              <thead>
+                <tr>
+                  <th>항목</th>
+                </tr>
+              </thead>
+              <tbody>
+                {positions.length === 0 ? (
+                  <tr>
+                    <td className="tg-muted">열린 포지션 표시가 없습니다.</td>
+                  </tr>
+                ) : (
+                  positions.map((p) => (
+                    <tr key={p}>
+                      <td>{p}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+        {deskBottomTab === "FILLS" ? (
+          <div className="tg-tape">
+            <div className="tg-tape-head">실시간 체결 스트림</div>
+            <ul className="tg-tape-list">
+              {trades.length === 0 ? (
+                <li className="tg-muted">체결 내역이 없습니다.</li>
+              ) : (
+                trades.slice(0, 24).map((t, i) => (
+                  <li key={`${t}-${i}`} className="tg-tape-row">
+                    {t}
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>
+        ) : null}
+        {deskBottomTab === "ORDERS" ? (
+          <table className="tg-table">
+            <caption className="visuallyHidden">미체결·주문 로그</caption>
+            <thead>
+              <tr>
+                <th>내역</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.length === 0 ? (
+                <tr>
+                  <td className="tg-muted">미체결 주문 로그가 없습니다.</td>
+                </tr>
+              ) : (
+                orders.slice(0, 40).map((o, i) => (
+                  <tr key={`${o}-${i}`}>
+                    <td>{o}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        ) : null}
+        {deskBottomTab === "ASSETS" ? (
+          <div className="tg-assets">
+            <div className="tg-assets-grid">
+              <div className="tg-stat">
+                <span className="tg-stat-k">실계정 USDT</span>
+                <span className="tg-stat-v tg-num">
+                  {isCryptoGroup ? formatCommaNumber(liveUsdt, 4) : liveUsdt.toFixed(2)}
+                </span>
+              </div>
+              <div className="tg-stat">
+                <span className="tg-stat-k">모의 USDT</span>
+                <span className="tg-stat-v tg-num">
+                  {isCryptoGroup ? formatCommaNumber(practiceUsdt, 4) : practiceUsdt.toFixed(2)}
+                </span>
+              </div>
+              <div className="tg-stat">
+                <span className="tg-stat-k">주문 사용 잔고</span>
+                <span className="tg-stat-v tg-num">
+                  {isCryptoGroup ? formatCommaNumber(activeBalance, 4) : activeBalance.toFixed(2)}
+                </span>
+              </div>
+              <div className="tg-stat">
+                <span className="tg-stat-k">모드</span>
+                <span className="tg-stat-v">{isPractice ? "모의투자" : "실거래"}</span>
+              </div>
+              {isCryptoGroup && cryptoSummaryModel ? (
+                <>
+                  <div className="tg-stat">
+                    <span className="tg-stat-k">내 총자산(추정)</span>
+                    <span className="tg-stat-v tg-num">{formatCommaNumber(cryptoSummaryModel.totalAssets, 4)} USDT</span>
+                  </div>
+                  <div className="tg-stat">
+                    <span className="tg-stat-k">금일 실현(수수료 반영)</span>
+                    <span
+                      className={`tg-stat-v tg-num${
+                        cryptoSummaryModel.dailyRealized > 0
+                          ? " tg-pnl--up"
+                          : cryptoSummaryModel.dailyRealized < 0
+                            ? " tg-pnl--down"
+                            : ""
+                      }`}
+                    >
+                      {formatCommaNumber(cryptoSummaryModel.dailyRealized, 4)} USDT
+                    </span>
+                  </div>
+                </>
+              ) : null}
+            </div>
+            {marketLiveVolume != null ? (
+              <p className="tg-bottom-hint">
+                실시간 거래량: {marketLiveVolume.toLocaleString()} {qtyLabel}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 
   return (
-    <div className="app">
-      <header className="header">
-        <div className="headerTop">
-          <div className="brandRow">
-            <h1>Tetherget 거래소</h1>
-            <span className="brandBadge" title="제품 코드명">
-              TGX CEX
-            </span>
-          </div>
-          <div className="tradeModeTabs" role="tablist" aria-label="현물·선물 모드">
-            <NavLink
-              to="/spot"
-              className={({ isActive }) => (isActive ? "tradeModeTab tradeModeTab--active" : "tradeModeTab")}
+    <div className={showSymbolRail ? "app app--terminal" : "app"}>
+      <a className="skipLink visuallyHidden" href="#main-content">
+        본문으로 건너뛰기
+      </a>
+      <header className={showSymbolRail ? "tg-header tg-header--dense" : "tg-header"}>
+        <div className="tg-header-inner">
+          <Link to="/" className="tg-brand" aria-label="TGX 홈">
+            TGX
+          </Link>
+          <label className="tg-header-field">
+            <span className="tg-header-label">시장</span>
+            <select
+              className="tg-header-select"
+              value={marketGroup}
+              onChange={(e) => setMarketGroup(e.target.value as MarketGroupKey)}
             >
-              Spot
-            </NavLink>
-            <NavLink
-              to="/futures"
-              className={() => (futuresTabActive ? "tradeModeTab tradeModeTab--active" : "tradeModeTab")}
-            >
-              Futures
-            </NavLink>
-          </div>
-        </div>
-        <p>
-          중앙화 코인 거래소(CEX): 현물·선물·지갑·주문체결 구조. P2P(유저 간 직거래) 기능 없음.
-        </p>
-        <p className="muted">Spot · Futures · 모의투자 · 대회 · 관리자 · 레퍼럴</p>
-        <div className="twoCol">
-          <label>
-            시장군
-            <select value={marketGroup} onChange={(e) => setMarketGroup(e.target.value as MarketGroupKey)}>
               {Object.entries(MARKET_GROUPS).map(([key, cfg]) => (
                 <option key={key} value={key}>
                   {cfg.label}
@@ -1995,22 +2502,35 @@ function App() {
               ))}
             </select>
           </label>
-          <label>
-            심볼
-            <select value={symbol} onChange={(e) => setSymbol(e.target.value)}>
-              {marketCfg.symbols.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <div className="headerStatus" aria-live="polite">
+          {!showSymbolRail ? (
+            <label className="tg-header-field">
+              <span className="tg-header-label">종목</span>
+              <select className="tg-header-select" value={symbol} onChange={(e) => setSymbol(e.target.value)}>
+                {marketCfg.symbols.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          <div className="tradeModeTabs tg-header-modes" role="tablist" aria-label="현물·선물">
+            <NavLink
+              to="/spot"
+              className={({ isActive }) => (isActive ? "tradeModeTab tradeModeTab--active" : "tradeModeTab")}
+            >
+              현물
+            </NavLink>
+            <NavLink
+              to="/futures"
+              aria-current={futuresTabActive ? "page" : undefined}
+              className={() => (futuresTabActive ? "tradeModeTab tradeModeTab--active" : "tradeModeTab")}
+            >
+              선물
+            </NavLink>
+          </div>
           <span
-            className={`headerStatus-line${
-              apiHealthProbe?.diskReady === false ? " headerStatus-line--diskWarn" : ""
-            }`}
+            className={`tg-api-pill${apiHealthProbe?.diskReady === false ? " tg-api-pill--warn" : ""}`}
             title={
               apiHealthProbe
                 ? formatHealthProbeTooltip({
@@ -2020,86 +2540,117 @@ function App() {
                     nodeVersion: apiHealthProbe.nodeVersion,
                     diskReady: apiHealthProbe.diskReady
                   })
-                : apiProbeSettled
-                  ? "GET /api/health 에 연결할 수 없습니다. 백엔드 주소·CORS·네트워크를 확인하세요."
-                  : "헬스 엔드포인트 응답 대기 중입니다."
-            }
-            aria-busy={!apiProbeSettled}
-            aria-label={
-              apiHealthProbe
-                ? `API 지연 ${apiHealthProbe.latencyMs}ms, 버전 ${apiHealthProbe.platformApiVersion}${
-                    apiHealthProbe.diskReady === false
-                      ? ", 상태 저장 디스크 레디 실패"
-                      : apiHealthProbe.diskReady === true
-                        ? ", 디스크 레디 정상"
-                        : ""
-                  }`
-                : apiProbeSettled
-                  ? "API 연결 불가"
-                  : "API 상태 확인 중"
+                : undefined
             }
           >
-            API:{" "}
-            {apiHealthProbe ? (
-              <>
-                {apiHealthProbe.latencyMs}ms · v{apiHealthProbe.platformApiVersion}
-                {apiHealthProbe.uptimeSeconds != null
-                  ? apiHealthProbe.uptimeSeconds < 120
-                    ? ` · up ${apiHealthProbe.uptimeSeconds}s`
-                    : ` · up ${Math.floor(apiHealthProbe.uptimeSeconds / 3600)}h${Math.floor((apiHealthProbe.uptimeSeconds % 3600) / 60)}m`
-                  : ""}
-                {apiHealthProbe.diskReady === false ? " · 디스크 레디 실패" : null}
-              </>
-            ) : apiProbeSettled ? (
-              "OFFLINE"
-            ) : (
-              "확인 중…"
-            )}
+            API{" "}
+            {apiHealthProbe
+              ? `${apiHealthProbe.latencyMs}ms`
+              : apiProbeSettled
+                ? "OFF"
+                : "…"}
           </span>
-          <span className="headerStatus-line">
-            Backend(work): {backendConnected ? "CONNECTED" : "OFFLINE"} · User:{" "}
-            {authUser ? `${authUser.email} (${authUser.role})` : "미로그인"}
-          </span>
-        </div>
-        {authToken ? <small>Session Token: {authToken}</small> : null}
-        {sessionExpireAt ? <small>Session Expires: {new Date(sessionExpireAt).toLocaleString()}</small> : null}
-        {authUser ? (
-          <div>
-            <button className="ghost" onClick={handleLogout}>
-              로그아웃
-            </button>
+          <Link to="/wallet" className="tg-header-wallet">
+            지갑
+          </Link>
+          <div className="tg-header-menuCol">
+            <div className="tg-account-switch" role="group" aria-label="거래 계정">
+              <button
+                type="button"
+                className={`tg-account-btn${isPractice ? " tg-account-btn--active" : ""}`}
+                onClick={() => setIsPractice(true)}
+              >
+                모의투자
+              </button>
+              <button
+                type="button"
+                className={`tg-account-btn${!isPractice ? " tg-account-btn--active" : ""}`}
+                onClick={() => setIsPractice(false)}
+              >
+                실거래
+              </button>
+            </div>
+            <details className="tg-menu">
+            <summary className="tg-menu-summary">메뉴</summary>
+            <div className="tg-menu-panel">
+              <Link to="/mypage">마이페이지</Link>
+              <Link to="/wallet/flow">입출금</Link>
+              <Link to="/admin">관리자</Link>
+              <Link to="/exchange">거래소</Link>
+              <Link to="/simulation">모의투자</Link>
+              <Link to="/tournament">대회</Link>
+              <Link to="/ranking">랭킹</Link>
+              <Link to="/auth">로그인·가입</Link>
+              <span className="tg-menu-meta">
+                백엔드: {backendConnected ? "연결" : "오프라인"} ·{" "}
+                {authUser ? `${authUser.email}` : "미로그인"}
+              </span>
+              {authToken ? (
+                <div className="tg-menu-token">
+                  <small>세션 토큰</small>
+                  <span className={showSessionToken ? "sessionTokenReveal" : undefined}>
+                    {showSessionToken ? authToken : maskSessionTokenPreview(authToken)}
+                  </span>
+                  <button type="button" className="ghost" onClick={() => setShowSessionToken((v) => !v)}>
+                    {showSessionToken ? "숨기기" : "보기"}
+                  </button>
+                </div>
+              ) : null}
+              {sessionExpireAt ? (
+                <span className="tg-menu-meta">만료: {new Date(sessionExpireAt).toLocaleString()}</span>
+              ) : null}
+              {authUser ? (
+                <button type="button" className="tg-menu-logout" onClick={handleLogout}>
+                  로그아웃
+                </button>
+              ) : null}
+            </div>
+            </details>
           </div>
-        ) : null}
+        </div>
       </header>
 
-      <nav className="nav">
-        {navItems.map(([label, to]) => (
-          <Link key={to} to={to} className={location.pathname === to ? "active" : ""}>
-            {label}
-          </Link>
-        ))}
-      </nav>
+      {!showSymbolRail ? (
+        <>
+          <nav className="nav nav--secondary" aria-label="주요 페이지">
+            {navItems.map(([label, to]) => {
+              const isActive = location.pathname === to;
+              return (
+                <Link
+                  key={to}
+                  to={to}
+                  className={isActive ? "active" : ""}
+                  aria-current={isActive ? "page" : undefined}
+                >
+                  {label}
+                </Link>
+              );
+            })}
+          </nav>
 
-      <div className="marketQuickBar" role="toolbar" aria-label="시장 유형 빠른 선택">
-        <span className="marketQuickBar-label">시장</span>
-        {(Object.keys(MARKET_GROUPS) as MarketGroupKey[]).map((key) => {
-          const cfg = MARKET_GROUPS[key];
-          return (
-            <button
-              key={key}
-              type="button"
-              className={marketGroup === key ? "marketQuickBtn marketQuickBtn--active" : "marketQuickBtn"}
-              onClick={() => setMarketGroup(key)}
-            >
-              {cfg.label}
-            </button>
-          );
-        })}
-      </div>
+          <div className="marketQuickBar" role="toolbar" aria-label="시장 유형 빠른 선택">
+            <span className="marketQuickBar-label">시장</span>
+            {(Object.keys(MARKET_GROUPS) as MarketGroupKey[]).map((key) => {
+              const cfg = MARKET_GROUPS[key];
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className={marketGroup === key ? "marketQuickBtn marketQuickBtn--active" : "marketQuickBtn"}
+                  aria-pressed={marketGroup === key}
+                  onClick={() => setMarketGroup(key)}
+                >
+                  {cfg.label}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      ) : null}
 
-      <div className={showSymbolRail ? "tradingShell" : undefined}>
+      <div className={showSymbolRail ? "tg-shell" : undefined}>
         {showSymbolRail ? (
-          <aside className="symbolRail panel" aria-label="심볼·시세 목록">
+          <aside className="symbolRail tg-symbol-col" aria-label="심볼·시세 목록">
             <div className="symbolRail-head">
               <span className="symbolRail-title">{marketCfg.label}</span>
               <span className="symbolRail-src">{marketCfg.sourceLabel}</span>
@@ -2118,6 +2669,7 @@ function App() {
                 </span>
               ) : null}
             </div>
+            <div className="symbolRail-scroll">
             <ul className="symbolRail-list">
               {marketCfg.symbols.map((s) => {
                 const mid = midHintForSymbol(s);
@@ -2130,6 +2682,12 @@ function App() {
                     <button
                       type="button"
                       className={symbol === s ? "symbolRail-row symbolRail-row--active" : "symbolRail-row"}
+                      aria-pressed={symbol === s}
+                      aria-label={
+                        mid != null
+                          ? `${s}, 24시간 변동률 ${chgStr}, 표시 가격 ${mid.toLocaleString(undefined, { maximumFractionDigits: Math.max(2, decimals) })}`
+                          : `${s}, 24시간 변동률 ${chgStr}, 표시 가격 없음`
+                      }
                       onClick={() => setSymbol(s)}
                     >
                       <div className="symbolRail-row-main">
@@ -2156,10 +2714,11 @@ function App() {
                 );
               })}
             </ul>
+            </div>
           </aside>
         ) : null}
 
-        <main className="grid">
+        <main id="main-content" className={showSymbolRail ? "tg-main" : "grid"} tabIndex={-1}>
         {alerts.length > 0 ? (
           <div className="card" role="status" aria-live="polite">
             <strong>실시간 운영 알림:</strong> [{alerts[0].level}] {alerts[0].message}
@@ -2173,17 +2732,6 @@ function App() {
         {speedEventNotice ? (
           <div className="card" role="status" aria-live="polite">
             <strong>[스피드 알림]</strong> {speedEventNotice}
-          </div>
-        ) : null}
-        {showSymbolRail && tvChartSymbol && location.pathname !== "/exchange" ? (
-          <div className="card chartDock">
-            <div className="chartDock-head">
-              <h3 className="chartDock-title">차트</h3>
-              <small className="chartDock-meta">
-                {tvChartSymbol} · TradingView
-              </small>
-            </div>
-            <TradingViewEmbed tvSymbol={tvChartSymbol} />
           </div>
         ) : null}
         <Routes>
@@ -2207,198 +2755,61 @@ function App() {
             path="/auth"
             element={
               <ShellPage title="로그인/회원가입">
-                <div className="stack">
-                  <input value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} placeholder="이메일" />
+                <form
+                  className="stack"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void handleLogin();
+                  }}
+                >
+                  <label htmlFor="auth-email">이메일</label>
                   <input
+                    id="auth-email"
+                    name="email"
+                    type="email"
+                    autoComplete="username"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
+                    placeholder="you@example.com"
+                  />
+                  <label htmlFor="auth-password">비밀번호</label>
+                  <input
+                    id="auth-password"
+                    name="password"
+                    type="password"
+                    autoComplete="current-password"
                     value={authPassword}
                     onChange={(e) => setAuthPassword(e.target.value)}
                     placeholder="비밀번호"
-                    type="password"
                   />
-                  <button onClick={handleLogin}>로그인</button>
-                  <button className="ghost">회원가입</button>
-                </div>
+                  <button type="submit" disabled={loginSubmitting} aria-busy={loginSubmitting}>
+                    {loginSubmitting ? "로그인 중…" : "로그인"}
+                  </button>
+                  <button type="button" className="ghost">
+                    회원가입
+                  </button>
+                </form>
               </ShellPage>
             }
           />
           <Route
             path="/exchange"
             element={
-              <ShellPage title="거래소">
+              <ShellPage title="거래소" bare>
                 {exchangePublicHalted ? (
-                  <div className="errorBanner">
+                  <div className="errorBanner" role="alert" aria-live="assertive">
                     <strong>플랫폼 거래 정지:</strong> 관리자 설정으로 신규 주문이 서버에서 거절됩니다.
                   </div>
                 ) : null}
                 {!exchangePublicHalted &&
                 exchangePublicDisabled.includes(symbol.trim().toUpperCase()) ? (
-                  <div className="errorBanner">
+                  <div className="errorBanner" role="alert" aria-live="assertive">
                     <strong>심볼 거래 OFF:</strong> 이 종목은 현재 주문을 받지 않습니다.
                   </div>
                 ) : null}
-                <div
-                  className={
-                    tvChartSymbol ? "exchangeTopSplit" : "exchangeTopSplit exchangeTopSplit--bookOnly"
-                  }
-                >
-                  {tvChartSymbol ? (
-                    <div className="card chartDock chartDock--exchange">
-                      <div className="chartDock-head">
-                        <h3 className="chartDock-title">차트</h3>
-                        <small className="chartDock-meta">
-                          {tvChartSymbol} · TradingView
-                        </small>
-                      </div>
-                      <TradingViewEmbed tvSymbol={tvChartSymbol} />
-                    </div>
-                  ) : null}
-                  {orderBookCard}
-                </div>
-                <div className="twoCol">
-                  <div className="card">
-                    <h3>시장</h3>
-                    <div className="rowActions">
-                      <span className={`dataBadge dataBadge--${dataGrade.ticker.toLowerCase()}`} title={tickerGradeReason}>
-                        Ticker {dataGrade.ticker}
-                      </span>
-                      <span className={`dataBadge dataBadge--${dataGrade.orderbook.toLowerCase()}`} title={bookGradeReason}>
-                        Orderbook {dataGrade.orderbook}
-                      </span>
-                    </div>
-                    <small className="dataHint">Ticker: {tickerGradeReason}</small>
-                    <small className="dataHint">Orderbook: {bookGradeReason}</small>
-                    {isCryptoGroup ? (
-                      <small className="dataHint">
-                        서버 시뮬 중간가(LIMIT 매칭 참조):{" "}
-                        {exchangeSimMids[symbol.trim().toUpperCase()] != null
-                          ? `${exchangeSimMids[symbol.trim().toUpperCase()].toLocaleString()} USDT`
-                          : "—"}
-                      </small>
-                    ) : null}
-                    <p>{symbol}: {price.toLocaleString(undefined, { maximumFractionDigits: Math.max(2, decimals) })}</p>
-                    <p>24h: {marketChange.toFixed(2)}%</p>
-                    {marketGroup === "US_FUTURES" && symbolContractSpec ? (
-                      <p>
-                        계약규격: {symbolContractSpec.name} · 승수 {symbolContractSpec.multiplier} {symbolContractSpec.unit}
-                      </p>
-                    ) : isStockGroup ? (
-                      <p>주식형 시세모드: 호가잔량(주) 중심 · 체결량은 실시간 볼륨 반영</p>
-                    ) : isCryptoGroup ? (
-                      <p>
-                        펀딩(예상): {cryptoFundingPct != null ? `${cryptoFundingPct.toFixed(4)}%` : "—"}
-                        {cryptoMarkPrice != null
-                          ? ` · 마크 ${cryptoMarkPrice.toLocaleString(undefined, { maximumFractionDigits: Math.max(2, decimals) })}`
-                          : ""}{" "}
-                        · USDT-M 무기한
-                      </p>
-                    ) : (
-                      <p>Funding: 0.01%</p>
-                    )}
-                    {marketLiveVolume != null ? <p>실시간 거래량: {marketLiveVolume.toLocaleString()} {qtyLabel}</p> : null}
-                    <small>
-                      시세 소스: {apiStatus === "CONNECTED" ? marketCfg.sourceLabel : "Mock Fallback"} · {marketCfg.label}
-                    </small>
-                    <small>
-                      데이터 신뢰도: Ticker={dataGrade.ticker}, Orderbook={dataGrade.orderbook}
-                    </small>
-                  </div>
-                  <div className="card">
-                    <h3>주문 패널</h3>
-                    <p>아래에 스피드·기본 주문창이 표시됩니다. 현물·선물 전용 메뉴에서도 동일 UI를 사용합니다.</p>
-                  </div>
-                  <div className="card">
-                    <h3>실시간 체결 스트림</h3>
-                    <p>최근 체결: {trades[0] ?? "아직 체결 내역 없음"}</p>
-                  </div>
-                  <div className="card">
-                    <h3>포지션 계산</h3>
-                    <p>예상 청산가: {simulatedLiqPrice ? simulatedLiqPrice.toFixed(2) : "-"}</p>
-                    <p>미실현손익: {simulatedPnl ? simulatedPnl.toFixed(2) : "0.00"} USDT</p>
-                  </div>
-                </div>
-                <div className="stack exchangeOrderDock">
-                  <TradePanel
-                    isPractice={isPractice}
-                    setIsPractice={setIsPractice}
-                    activeBalance={activeBalance}
-                    qty={qty}
-                    setQty={setQty}
-                    leverage={leverage}
-                    setLeverage={setLeverage}
-                    side={side}
-                    setSide={setSide}
-                    orderType={orderType}
-                    setOrderType={setOrderType}
-                    limitPrice={limitPrice}
-                    setLimitPrice={setLimitPrice}
-                    estimatedCost={estimatedCost}
-                    submitOrder={submitOrder}
-                    allowLeverage={marketGroup === "US_FUTURES"}
-                    orderUiMode={orderUiMode}
-                    setOrderUiMode={setOrderUiMode}
-                    speedQty={speedQty}
-                    setSpeedQty={setSpeedQty}
-                    speedPrice={speedPrice}
-                    setSpeedPrice={setSpeedPrice}
-                    symbol={symbol}
-                    tickSize={tickSize}
-                    marketPrice={price}
-                    speedOpenOrders={sortedSpeedOpenOrders}
-                    onAmendLatestSpeedOrder={amendLatestSpeedOrder}
-                    onCancelAllSpeedOrders={cancelAllSpeedOrders}
-                    onAmendSpeedOrderById={amendSpeedOrderById}
-                    onCancelSpeedOrderById={cancelSpeedOrderById}
-                    speedPendingBookKey={speedPendingBookKey}
-                    speedMultiTicks={speedMultiTicks}
-                    setSpeedMultiTicks={setSpeedMultiTicks}
-                    speedMultiCount={speedMultiCount}
-                    setSpeedMultiCount={setSpeedMultiCount}
-                    placeSpeedMultiOrders={placeSpeedMultiOrders}
-                    speedMitEnabled={speedMitEnabled}
-                    setSpeedMitEnabled={setSpeedMitEnabled}
-                    speedMitTrigger={speedMitTrigger}
-                    setSpeedMitTrigger={setSpeedMitTrigger}
-                    speedMitOffsetTicks={speedMitOffsetTicks}
-                    setSpeedMitOffsetTicks={setSpeedMitOffsetTicks}
-                    speedMitExecMode={speedMitExecMode}
-                    setSpeedMitExecMode={setSpeedMitExecMode}
-                    registerMitOrder={registerMitOrder}
-                    cancelMitOrderById={cancelMitOrderById}
-                    speedMitOrders={sortedSpeedMitOrders}
-                    speedUseOco={speedUseOco}
-                    setSpeedUseOco={setSpeedUseOco}
-                    speedTpTicks={speedTpTicks}
-                    setSpeedTpTicks={setSpeedTpTicks}
-                    speedSlTicks={speedSlTicks}
-                    setSpeedSlTicks={setSpeedSlTicks}
-                    speedFills={sortedSpeedFills}
-                    speedBottomTab={speedBottomTab}
-                    setSpeedBottomTab={setSpeedBottomTab}
-                    speedFillFilter={speedFillFilter}
-                    setSpeedFillFilter={setSpeedFillFilter}
-                    speedOpenSort={speedOpenSort}
-                    setSpeedOpenSort={setSpeedOpenSort}
-                    speedMitSort={speedMitSort}
-                    setSpeedMitSort={setSpeedMitSort}
-                    speedFillSort={speedFillSort}
-                    setSpeedFillSort={setSpeedFillSort}
-                    exportSpeedFillsCsv={exportSpeedFillsCsv}
-                    formatKst={formatKst}
-                    marketGroupLabel={marketCfg.label}
-                    speedToggleConfirm={speedToggleConfirm}
-                    setSpeedToggleConfirm={setSpeedToggleConfirm}
-                    speedPanelTab={speedPanelTab}
-                    setSpeedPanelTab={setSpeedPanelTab}
-                    speedSummaryCollapsed={speedSummaryCollapsed}
-                    setSpeedSummaryCollapsed={setSpeedSummaryCollapsed}
-                    speedFillSearch={speedFillSearch}
-                    setSpeedFillSearch={setSpeedFillSearch}
-                    speedOpenWarnThreshold={speedOpenWarnThreshold}
-                    setSpeedOpenWarnThreshold={setSpeedOpenWarnThreshold}
-                    speedMitWarnThreshold={speedMitWarnThreshold}
-                    setSpeedMitWarnThreshold={setSpeedMitWarnThreshold}
-                    futuresContractMode={marketGroup === "US_FUTURES"}
-                  />
+                <div className="tg-route-body">
+                  {renderTradingDesk({})}
+                  {deskBottomPanel}
                 </div>
               </ShellPage>
             }
@@ -2406,273 +2817,35 @@ function App() {
           <Route
             path="/spot"
             element={
-              <ShellPage title="현물거래">
-                <TradePanel
-                  isPractice={isPractice}
-                  setIsPractice={setIsPractice}
-                  activeBalance={activeBalance}
-                  qty={qty}
-                  setQty={setQty}
-                  leverage={1}
-                  setLeverage={setLeverage}
-                  side={side}
-                  setSide={setSide}
-                  orderType={orderType}
-                  setOrderType={setOrderType}
-                  limitPrice={limitPrice}
-                  setLimitPrice={setLimitPrice}
-                  estimatedCost={estimatedCost}
-                  submitOrder={submitOrder}
-                  allowLeverage={false}
-                  orderUiMode={orderUiMode}
-                  setOrderUiMode={setOrderUiMode}
-                  speedQty={speedQty}
-                  setSpeedQty={setSpeedQty}
-                  speedPrice={speedPrice}
-                  setSpeedPrice={setSpeedPrice}
-                  symbol={symbol}
-                  tickSize={tickSize}
-                  marketPrice={price}
-                  speedOpenOrders={sortedSpeedOpenOrders}
-                  onAmendLatestSpeedOrder={amendLatestSpeedOrder}
-                  onCancelAllSpeedOrders={cancelAllSpeedOrders}
-                  onAmendSpeedOrderById={amendSpeedOrderById}
-                  onCancelSpeedOrderById={cancelSpeedOrderById}
-                  speedPendingBookKey={speedPendingBookKey}
-                  speedMultiTicks={speedMultiTicks}
-                  setSpeedMultiTicks={setSpeedMultiTicks}
-                  speedMultiCount={speedMultiCount}
-                  setSpeedMultiCount={setSpeedMultiCount}
-                  placeSpeedMultiOrders={placeSpeedMultiOrders}
-                  speedMitEnabled={speedMitEnabled}
-                  setSpeedMitEnabled={setSpeedMitEnabled}
-                  speedMitTrigger={speedMitTrigger}
-                  setSpeedMitTrigger={setSpeedMitTrigger}
-                  speedMitOffsetTicks={speedMitOffsetTicks}
-                  setSpeedMitOffsetTicks={setSpeedMitOffsetTicks}
-                  speedMitExecMode={speedMitExecMode}
-                  setSpeedMitExecMode={setSpeedMitExecMode}
-                  registerMitOrder={registerMitOrder}
-                  cancelMitOrderById={cancelMitOrderById}
-                  speedMitOrders={sortedSpeedMitOrders}
-                  speedUseOco={speedUseOco}
-                  setSpeedUseOco={setSpeedUseOco}
-                  speedTpTicks={speedTpTicks}
-                  setSpeedTpTicks={setSpeedTpTicks}
-                  speedSlTicks={speedSlTicks}
-                  setSpeedSlTicks={setSpeedSlTicks}
-                  speedFills={sortedSpeedFills}
-                  speedBottomTab={speedBottomTab}
-                  setSpeedBottomTab={setSpeedBottomTab}
-                  speedFillFilter={speedFillFilter}
-                  setSpeedFillFilter={setSpeedFillFilter}
-                  speedOpenSort={speedOpenSort}
-                  setSpeedOpenSort={setSpeedOpenSort}
-                  speedMitSort={speedMitSort}
-                  setSpeedMitSort={setSpeedMitSort}
-                  speedFillSort={speedFillSort}
-                  setSpeedFillSort={setSpeedFillSort}
-                  exportSpeedFillsCsv={exportSpeedFillsCsv}
-                  formatKst={formatKst}
-                  marketGroupLabel={marketCfg.label}
-                  speedToggleConfirm={speedToggleConfirm}
-                  setSpeedToggleConfirm={setSpeedToggleConfirm}
-                  speedPanelTab={speedPanelTab}
-                  setSpeedPanelTab={setSpeedPanelTab}
-                  speedSummaryCollapsed={speedSummaryCollapsed}
-                  setSpeedSummaryCollapsed={setSpeedSummaryCollapsed}
-                  speedFillSearch={speedFillSearch}
-                  setSpeedFillSearch={setSpeedFillSearch}
-                  speedOpenWarnThreshold={speedOpenWarnThreshold}
-                  setSpeedOpenWarnThreshold={setSpeedOpenWarnThreshold}
-                  speedMitWarnThreshold={speedMitWarnThreshold}
-                  setSpeedMitWarnThreshold={setSpeedMitWarnThreshold}
-                  futuresContractMode={marketGroup === "US_FUTURES"}
-                />
+              <ShellPage title="현물거래" bare>
+                <div className="tg-route-body">
+                  {renderTradingDesk({ allowLeverage: false, leverage: 1 })}
+                  {deskBottomPanel}
+                </div>
               </ShellPage>
             }
           />
           <Route
             path="/futures"
             element={
-              <ShellPage title="선물거래">
-                <TradePanel
-                  isPractice={isPractice}
-                  setIsPractice={setIsPractice}
-                  activeBalance={activeBalance}
-                  qty={qty}
-                  setQty={setQty}
-                  leverage={leverage}
-                  setLeverage={setLeverage}
-                  side={side}
-                  setSide={setSide}
-                  orderType={orderType}
-                  setOrderType={setOrderType}
-                  limitPrice={limitPrice}
-                  setLimitPrice={setLimitPrice}
-                  estimatedCost={estimatedCost}
-                  submitOrder={submitOrder}
-                  allowLeverage
-                  orderUiMode={orderUiMode}
-                  setOrderUiMode={setOrderUiMode}
-                  speedQty={speedQty}
-                  setSpeedQty={setSpeedQty}
-                  speedPrice={speedPrice}
-                  setSpeedPrice={setSpeedPrice}
-                  symbol={symbol}
-                  tickSize={tickSize}
-                  marketPrice={price}
-                  speedOpenOrders={sortedSpeedOpenOrders}
-                  onAmendLatestSpeedOrder={amendLatestSpeedOrder}
-                  onCancelAllSpeedOrders={cancelAllSpeedOrders}
-                  onAmendSpeedOrderById={amendSpeedOrderById}
-                  onCancelSpeedOrderById={cancelSpeedOrderById}
-                  speedPendingBookKey={speedPendingBookKey}
-                  speedMultiTicks={speedMultiTicks}
-                  setSpeedMultiTicks={setSpeedMultiTicks}
-                  speedMultiCount={speedMultiCount}
-                  setSpeedMultiCount={setSpeedMultiCount}
-                  placeSpeedMultiOrders={placeSpeedMultiOrders}
-                  speedMitEnabled={speedMitEnabled}
-                  setSpeedMitEnabled={setSpeedMitEnabled}
-                  speedMitTrigger={speedMitTrigger}
-                  setSpeedMitTrigger={setSpeedMitTrigger}
-                  speedMitOffsetTicks={speedMitOffsetTicks}
-                  setSpeedMitOffsetTicks={setSpeedMitOffsetTicks}
-                  speedMitExecMode={speedMitExecMode}
-                  setSpeedMitExecMode={setSpeedMitExecMode}
-                  registerMitOrder={registerMitOrder}
-                  cancelMitOrderById={cancelMitOrderById}
-                  speedMitOrders={sortedSpeedMitOrders}
-                  speedUseOco={speedUseOco}
-                  setSpeedUseOco={setSpeedUseOco}
-                  speedTpTicks={speedTpTicks}
-                  setSpeedTpTicks={setSpeedTpTicks}
-                  speedSlTicks={speedSlTicks}
-                  setSpeedSlTicks={setSpeedSlTicks}
-                  speedFills={sortedSpeedFills}
-                  speedBottomTab={speedBottomTab}
-                  setSpeedBottomTab={setSpeedBottomTab}
-                  speedFillFilter={speedFillFilter}
-                  setSpeedFillFilter={setSpeedFillFilter}
-                  speedOpenSort={speedOpenSort}
-                  setSpeedOpenSort={setSpeedOpenSort}
-                  speedMitSort={speedMitSort}
-                  setSpeedMitSort={setSpeedMitSort}
-                  speedFillSort={speedFillSort}
-                  setSpeedFillSort={setSpeedFillSort}
-                  exportSpeedFillsCsv={exportSpeedFillsCsv}
-                  formatKst={formatKst}
-                  marketGroupLabel={marketCfg.label}
-                  speedToggleConfirm={speedToggleConfirm}
-                  setSpeedToggleConfirm={setSpeedToggleConfirm}
-                  speedPanelTab={speedPanelTab}
-                  setSpeedPanelTab={setSpeedPanelTab}
-                  speedSummaryCollapsed={speedSummaryCollapsed}
-                  setSpeedSummaryCollapsed={setSpeedSummaryCollapsed}
-                  speedFillSearch={speedFillSearch}
-                  setSpeedFillSearch={setSpeedFillSearch}
-                  speedOpenWarnThreshold={speedOpenWarnThreshold}
-                  setSpeedOpenWarnThreshold={setSpeedOpenWarnThreshold}
-                  speedMitWarnThreshold={speedMitWarnThreshold}
-                  setSpeedMitWarnThreshold={setSpeedMitWarnThreshold}
-                  futuresContractMode={marketGroup === "US_FUTURES"}
-                />
+              <ShellPage title="선물거래" bare>
+                <div className="tg-route-body">
+                  {renderTradingDesk({ allowLeverage: true })}
+                  {deskBottomPanel}
+                </div>
               </ShellPage>
             }
           />
           <Route
             path="/simulation"
             element={
-              <ShellPage title="모의투자">
-                <div className="stack">
-                  <div className="card">
-                    <h3>모의 계정 잔고</h3>
-                    <strong>{practiceUsdt.toFixed(2)} USDT</strong>
-                    <p>실계정과 완전히 분리된 가상 자산입니다.</p>
-                  </div>
-                  <TradePanel
-                    isPractice
-                    setIsPractice={setIsPractice}
-                    activeBalance={practiceUsdt}
-                    qty={qty}
-                    setQty={setQty}
-                    leverage={leverage}
-                    setLeverage={setLeverage}
-                    side={side}
-                    setSide={setSide}
-                    orderType={orderType}
-                    setOrderType={setOrderType}
-                    limitPrice={limitPrice}
-                    setLimitPrice={setLimitPrice}
-                    estimatedCost={estimatedCost}
-                    submitOrder={submitOrder}
-                    allowLeverage
-                    orderUiMode={orderUiMode}
-                    setOrderUiMode={setOrderUiMode}
-                    speedQty={speedQty}
-                    setSpeedQty={setSpeedQty}
-                    speedPrice={speedPrice}
-                    setSpeedPrice={setSpeedPrice}
-                    symbol={symbol}
-                    tickSize={tickSize}
-                    marketPrice={price}
-                    speedOpenOrders={sortedSpeedOpenOrders}
-                    onAmendLatestSpeedOrder={amendLatestSpeedOrder}
-                    onCancelAllSpeedOrders={cancelAllSpeedOrders}
-                    onAmendSpeedOrderById={amendSpeedOrderById}
-                    onCancelSpeedOrderById={cancelSpeedOrderById}
-                    speedPendingBookKey={speedPendingBookKey}
-                    speedMultiTicks={speedMultiTicks}
-                    setSpeedMultiTicks={setSpeedMultiTicks}
-                    speedMultiCount={speedMultiCount}
-                    setSpeedMultiCount={setSpeedMultiCount}
-                    placeSpeedMultiOrders={placeSpeedMultiOrders}
-                    speedMitEnabled={speedMitEnabled}
-                    setSpeedMitEnabled={setSpeedMitEnabled}
-                    speedMitTrigger={speedMitTrigger}
-                    setSpeedMitTrigger={setSpeedMitTrigger}
-                    speedMitOffsetTicks={speedMitOffsetTicks}
-                    setSpeedMitOffsetTicks={setSpeedMitOffsetTicks}
-                    speedMitExecMode={speedMitExecMode}
-                    setSpeedMitExecMode={setSpeedMitExecMode}
-                    registerMitOrder={registerMitOrder}
-                    cancelMitOrderById={cancelMitOrderById}
-                    speedMitOrders={sortedSpeedMitOrders}
-                    speedUseOco={speedUseOco}
-                    setSpeedUseOco={setSpeedUseOco}
-                    speedTpTicks={speedTpTicks}
-                    setSpeedTpTicks={setSpeedTpTicks}
-                    speedSlTicks={speedSlTicks}
-                    setSpeedSlTicks={setSpeedSlTicks}
-                    speedFills={sortedSpeedFills}
-                    speedBottomTab={speedBottomTab}
-                    setSpeedBottomTab={setSpeedBottomTab}
-                    speedFillFilter={speedFillFilter}
-                    setSpeedFillFilter={setSpeedFillFilter}
-                    speedOpenSort={speedOpenSort}
-                    setSpeedOpenSort={setSpeedOpenSort}
-                    speedMitSort={speedMitSort}
-                    setSpeedMitSort={setSpeedMitSort}
-                    speedFillSort={speedFillSort}
-                    setSpeedFillSort={setSpeedFillSort}
-                    exportSpeedFillsCsv={exportSpeedFillsCsv}
-                    formatKst={formatKst}
-                    marketGroupLabel={marketCfg.label}
-                    speedToggleConfirm={speedToggleConfirm}
-                    setSpeedToggleConfirm={setSpeedToggleConfirm}
-                    speedPanelTab={speedPanelTab}
-                    setSpeedPanelTab={setSpeedPanelTab}
-                    speedSummaryCollapsed={speedSummaryCollapsed}
-                    setSpeedSummaryCollapsed={setSpeedSummaryCollapsed}
-                    speedFillSearch={speedFillSearch}
-                    setSpeedFillSearch={setSpeedFillSearch}
-                    speedOpenWarnThreshold={speedOpenWarnThreshold}
-                    setSpeedOpenWarnThreshold={setSpeedOpenWarnThreshold}
-                    speedMitWarnThreshold={speedMitWarnThreshold}
-                    setSpeedMitWarnThreshold={setSpeedMitWarnThreshold}
-                    futuresContractMode={marketGroup === "US_FUTURES"}
-                  />
+              <ShellPage title="모의투자" bare>
+                <div className="tg-banner tg-banner--info">
+                  모의 계정 <strong>{practiceUsdt.toFixed(2)} USDT</strong> · 실계정과 분리된 가상 자산
+                </div>
+                <div className="tg-route-body">
+                  {renderTradingDesk({ allowLeverage: true })}
+                  {deskBottomPanel}
                 </div>
               </ShellPage>
             }
@@ -2705,7 +2878,9 @@ function App() {
                             <p>종목: {t.market}</p>
                             <small>상태: {t.status}</small>
                           </div>
-                          <button onClick={() => toggleTournament(t.id)}>상태 전환</button>
+                          <button type="button" onClick={() => toggleTournament(t.id)}>
+                            상태 전환
+                          </button>
                         </li>
                       ))}
                     </ul>
@@ -2719,6 +2894,7 @@ function App() {
             element={
               <ShellPage title="실시간 랭킹">
                 <table>
+                  <caption className="visuallyHidden">실시간 랭킹 참가자 목록</caption>
                   <thead>
                     <tr>
                       <th>참가자</th>
@@ -2764,24 +2940,45 @@ function App() {
             path="/wallet/flow"
             element={
               <ShellPage title="입금/출금">
-                <div className="stack">
-                  <button>입금 주소 발급</button>
+                <form
+                  className="stack"
+                  autoComplete="off"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void submitWithdrawal();
+                  }}
+                >
+                  <button type="button">입금 주소 발급</button>
+                  <label htmlFor="withdraw-amount">출금 금액 (USDT)</label>
                   <input
+                    id="withdraw-amount"
+                    name="amount"
                     type="number"
+                    min={0}
+                    step="any"
+                    autoComplete="off"
                     value={withdrawAmount}
                     onChange={(e) => setWithdrawAmount(Number(e.target.value))}
-                    placeholder="출금 금액 (USDT)"
                   />
+                  <label htmlFor="withdraw-address">출금 주소</label>
                   <input
+                    id="withdraw-address"
+                    name="withdraw-address"
+                    autoComplete="off"
                     value={withdrawAddress}
                     onChange={(e) => setWithdrawAddress(e.target.value)}
-                    placeholder="출금 주소"
+                    placeholder="체인 주소"
                   />
-                  <button className="ghost" onClick={submitWithdrawal}>
-                    출금 요청
+                  <button
+                    type="submit"
+                    className="ghost"
+                    disabled={withdrawalSubmitting}
+                    aria-busy={withdrawalSubmitting}
+                  >
+                    {withdrawalSubmitting ? "처리 중…" : "출금 요청"}
                   </button>
                   <p>이 화면은 추후 지갑 API 연결 가능한 구조로 분리 예정입니다.</p>
-                </div>
+                </form>
               </ShellPage>
             }
           />
@@ -2792,8 +2989,10 @@ function App() {
                 <div className="stack">
                   <div className="card">
                     <h3>보안 설정</h3>
-                    <button>2FA 활성화</button>
-                    <button className="ghost">출금 화이트리스트 설정</button>
+                    <button type="button">2FA 활성화</button>
+                    <button type="button" className="ghost">
+                      출금 화이트리스트 설정
+                    </button>
                   </div>
                   <div className="card">
                     <h3>주문/포지션 기록</h3>
@@ -2816,8 +3015,14 @@ function App() {
                             value={pendingCancelOrderId}
                             onChange={(e) => setPendingCancelOrderId(e.target.value)}
                           />
-                          <button type="button" className="ghost" onClick={() => void cancelBackendLimitOrder()}>
-                            서버 주문 취소
+                          <button
+                            type="button"
+                            className="ghost"
+                            disabled={cancelOrderSubmitting}
+                            aria-busy={cancelOrderSubmitting}
+                            onClick={() => void cancelBackendLimitOrder()}
+                          >
+                            {cancelOrderSubmitting ? "처리 중…" : "서버 주문 취소"}
                           </button>
                         </div>
                       </div>
@@ -2845,11 +3050,24 @@ function App() {
                       </label>
                     </div>
                     <div className="rowActions">
-                      <button onClick={() => setOrderPage((v) => Math.max(1, v - 1))}>이전 페이지</button>
+                      <button
+                        type="button"
+                        aria-label="이전 주문 목록 페이지"
+                        disabled={orderPage <= 1 || ordersSyncSubmitting}
+                        onClick={() => setOrderPage((v) => Math.max(1, v - 1))}
+                      >
+                        이전 페이지
+                      </button>
                       <small>
                         페이지 {orderPage} / 총 {Math.max(1, Math.ceil(orderTotal / 10))}
                       </small>
                       <button
+                        type="button"
+                        aria-label="다음 주문 목록 페이지"
+                        disabled={
+                          ordersSyncSubmitting ||
+                          orderPage >= Math.max(1, Math.ceil(orderTotal / 10))
+                        }
                         onClick={() =>
                           setOrderPage((v) => (v < Math.ceil(orderTotal / 10) ? v + 1 : v))
                         }
@@ -2857,7 +3075,14 @@ function App() {
                         다음 페이지
                       </button>
                     </div>
-                    <button onClick={syncOrdersFromBackend}>백엔드 주문 이력 동기화</button>
+                    <button
+                      type="button"
+                      disabled={ordersSyncSubmitting}
+                      aria-busy={ordersSyncSubmitting}
+                      onClick={() => void syncOrdersFromBackend()}
+                    >
+                      {ordersSyncSubmitting ? "동기화 중…" : "백엔드 주문 이력 동기화"}
+                    </button>
                     <div className="twoCol">
                       <ul className="list">
                         {orders.slice(0, 5).map((o) => (
@@ -2896,7 +3121,14 @@ function App() {
                         onChange={(e) => setOtpCode(e.target.value)}
                         placeholder="OTP 코드"
                       />
-                      <button onClick={verifyOtpForAdmin}>OTP 인증</button>
+                      <button
+                        type="button"
+                        disabled={otpVerifySubmitting}
+                        aria-busy={otpVerifySubmitting}
+                        onClick={verifyOtpForAdmin}
+                      >
+                        {otpVerifySubmitting ? "인증 중…" : "OTP 인증"}
+                      </button>
                     </div>
                     <small>
                       OTP 상태:{" "}
@@ -2906,19 +3138,35 @@ function App() {
                     </small>
                     <div className="twoCol">
                       <button
+                        type="button"
+                        disabled={adminActionBusy}
+                        aria-busy={adminActionBusy}
                         onClick={() =>
-                          getAdminAudit(adminRole, authToken ?? undefined)
-                            .then((data) => setAuditLogs(data.items.slice(0, 30)))
-                            .catch(() => setUiError("감사로그 조회 실패"))
+                          void runAdminAction(async () => {
+                            try {
+                              const data = await getAdminAudit(adminRole, authToken ?? undefined);
+                              setAuditLogs(data.items.slice(0, 30));
+                            } catch {
+                              setUiError("감사로그 조회 실패");
+                            }
+                          })
                         }
                       >
                         감사로그 동기화
                       </button>
                       <button
+                        type="button"
+                        disabled={adminActionBusy}
+                        aria-busy={adminActionBusy}
                         onClick={() =>
-                          getAdminSettlement(adminRole, authToken ?? undefined)
-                            .then((data) => setSettlementBatches(data.items))
-                            .catch(() => setUiError("정산 데이터 조회 실패"))
+                          void runAdminAction(async () => {
+                            try {
+                              const data = await getAdminSettlement(adminRole, authToken ?? undefined);
+                              setSettlementBatches(data.items);
+                            } catch {
+                              setUiError("정산 데이터 조회 실패");
+                            }
+                          })
                         }
                       >
                         정산 데이터 동기화
@@ -2947,33 +3195,41 @@ function App() {
                     <div className="twoCol">
                       <button
                         type="button"
-                        onClick={async () => {
-                          try {
-                            await postAdminExchangeHalt(adminRole, true, authToken ?? undefined);
-                            await refreshAdminExchangeStatus();
-                            const pub = await getExchangePublicStatus();
-                            setExchangePublicHalted(pub.halted);
-                            setExchangePublicDisabled(pub.disabledSymbols);
-                          } catch {
-                            setUiError("거래 정지 설정 실패");
-                          }
-                        }}
+                        disabled={adminActionBusy}
+                        aria-busy={adminActionBusy}
+                        onClick={() =>
+                          void runAdminAction(async () => {
+                            try {
+                              await postAdminExchangeHalt(adminRole, true, authToken ?? undefined);
+                              await refreshAdminExchangeStatus();
+                              const pub = await getExchangePublicStatus();
+                              setExchangePublicHalted(pub.halted);
+                              setExchangePublicDisabled(pub.disabledSymbols);
+                            } catch {
+                              setUiError("거래 정지 설정 실패");
+                            }
+                          })
+                        }
                       >
                         플랫폼 거래 정지
                       </button>
                       <button
                         type="button"
-                        onClick={async () => {
-                          try {
-                            await postAdminExchangeHalt(adminRole, false, authToken ?? undefined);
-                            await refreshAdminExchangeStatus();
-                            const pub = await getExchangePublicStatus();
-                            setExchangePublicHalted(pub.halted);
-                            setExchangePublicDisabled(pub.disabledSymbols);
-                          } catch {
-                            setUiError("거래 재개 설정 실패");
-                          }
-                        }}
+                        disabled={adminActionBusy}
+                        aria-busy={adminActionBusy}
+                        onClick={() =>
+                          void runAdminAction(async () => {
+                            try {
+                              await postAdminExchangeHalt(adminRole, false, authToken ?? undefined);
+                              await refreshAdminExchangeStatus();
+                              const pub = await getExchangePublicStatus();
+                              setExchangePublicHalted(pub.halted);
+                              setExchangePublicDisabled(pub.disabledSymbols);
+                            } catch {
+                              setUiError("거래 재개 설정 실패");
+                            }
+                          })
+                        }
                       >
                         플랫폼 거래 재개
                       </button>
@@ -2986,41 +3242,49 @@ function App() {
                       />
                       <button
                         type="button"
-                        onClick={async () => {
-                          try {
-                            await postAdminExchangeSymbol(
-                              adminRole,
-                              adminSymbolToggle.trim(),
-                              false,
-                              authToken ?? undefined
-                            );
-                            await refreshAdminExchangeStatus();
-                            const pub = await getExchangePublicStatus();
-                            setExchangePublicDisabled(pub.disabledSymbols);
-                          } catch {
-                            setUiError("심볼 거래 OFF 실패");
-                          }
-                        }}
+                        disabled={adminActionBusy}
+                        aria-busy={adminActionBusy}
+                        onClick={() =>
+                          void runAdminAction(async () => {
+                            try {
+                              await postAdminExchangeSymbol(
+                                adminRole,
+                                adminSymbolToggle.trim(),
+                                false,
+                                authToken ?? undefined
+                              );
+                              await refreshAdminExchangeStatus();
+                              const pub = await getExchangePublicStatus();
+                              setExchangePublicDisabled(pub.disabledSymbols);
+                            } catch {
+                              setUiError("심볼 거래 OFF 실패");
+                            }
+                          })
+                        }
                       >
                         이 심볼 거래 OFF
                       </button>
                       <button
                         type="button"
-                        onClick={async () => {
-                          try {
-                            await postAdminExchangeSymbol(
-                              adminRole,
-                              adminSymbolToggle.trim(),
-                              true,
-                              authToken ?? undefined
-                            );
-                            await refreshAdminExchangeStatus();
-                            const pub = await getExchangePublicStatus();
-                            setExchangePublicDisabled(pub.disabledSymbols);
-                          } catch {
-                            setUiError("심볼 거래 ON 실패");
-                          }
-                        }}
+                        disabled={adminActionBusy}
+                        aria-busy={adminActionBusy}
+                        onClick={() =>
+                          void runAdminAction(async () => {
+                            try {
+                              await postAdminExchangeSymbol(
+                                adminRole,
+                                adminSymbolToggle.trim(),
+                                true,
+                                authToken ?? undefined
+                              );
+                              await refreshAdminExchangeStatus();
+                              const pub = await getExchangePublicStatus();
+                              setExchangePublicDisabled(pub.disabledSymbols);
+                            } catch {
+                              setUiError("심볼 거래 ON 실패");
+                            }
+                          })
+                        }
                       >
                         이 심볼 거래 ON
                       </button>
@@ -3037,51 +3301,65 @@ function App() {
                       </label>
                       <button
                         type="button"
-                        onClick={async () => {
-                          try {
-                            const mid = Number(adminSimMidPrice);
-                            if (!Number.isFinite(mid) || mid <= 0) {
-                              setUiError("중간가를 입력하세요.");
-                              return;
+                        disabled={adminActionBusy}
+                        aria-busy={adminActionBusy}
+                        onClick={() =>
+                          void runAdminAction(async () => {
+                            try {
+                              const mid = Number(adminSimMidPrice);
+                              if (!Number.isFinite(mid) || mid <= 0) {
+                                setUiError("중간가를 입력하세요.");
+                                return;
+                              }
+                              await postAdminExchangeSimMid(
+                                adminRole,
+                                adminSymbolToggle.trim(),
+                                mid,
+                                authToken ?? undefined
+                              );
+                              await refreshAdminExchangeStatus();
+                              const pub = await getExchangePublicStatus();
+                              if (pub.simMidPrices) setExchangeSimMids(pub.simMidPrices);
+                            } catch {
+                              setUiError("시뮬 중간가 설정 실패");
                             }
-                            await postAdminExchangeSimMid(
-                              adminRole,
-                              adminSymbolToggle.trim(),
-                              mid,
-                              authToken ?? undefined
-                            );
-                            await refreshAdminExchangeStatus();
-                            const pub = await getExchangePublicStatus();
-                            if (pub.simMidPrices) setExchangeSimMids(pub.simMidPrices);
-                          } catch {
-                            setUiError("시뮬 중간가 설정 실패");
-                          }
-                        }}
+                          })
+                        }
                       >
                         위 심볼에 중간가 적용
                       </button>
                     </div>
                     <button
                       type="button"
-                      onClick={async () => {
-                        try {
-                          const r = await postAdminExchangeMatchOnce(adminRole, authToken ?? undefined);
-                          setAuditLogs((prev) =>
-                            [`MATCH_ONCE: touched=${r.touched} filled=${r.filled} partial=${r.partial}`, ...prev].slice(
-                              0,
-                              30
-                            )
-                          );
-                          const pub = await getExchangePublicStatus();
-                          if (pub.simMidPrices) setExchangeSimMids(pub.simMidPrices);
-                        } catch {
-                          setUiError("매칭 실행 실패");
-                        }
-                      }}
+                      disabled={adminActionBusy}
+                      aria-busy={adminActionBusy}
+                      onClick={() =>
+                        void runAdminAction(async () => {
+                          try {
+                            const r = await postAdminExchangeMatchOnce(adminRole, authToken ?? undefined);
+                            setAuditLogs((prev) =>
+                              [`MATCH_ONCE: touched=${r.touched} filled=${r.filled} partial=${r.partial}`, ...prev].slice(
+                                0,
+                                30
+                              )
+                            );
+                            const pub = await getExchangePublicStatus();
+                            if (pub.simMidPrices) setExchangeSimMids(pub.simMidPrices);
+                          } catch {
+                            setUiError("매칭 실행 실패");
+                          }
+                        })
+                      }
                     >
                       매칭 엔진 1회 실행
                     </button>
-                    <button type="button" className="ghost" onClick={() => void refreshAdminExchangeStatus()}>
+                    <button
+                      type="button"
+                      className="ghost"
+                      disabled={adminActionBusy}
+                      aria-busy={adminActionBusy}
+                      onClick={() => void runAdminAction(() => refreshAdminExchangeStatus())}
+                    >
                       운영 상태 새로고침
                     </button>
                   </div>
@@ -3120,7 +3398,7 @@ function App() {
                               : "없음"}
                           </small>
                           <small>리베이트율: {node.rebateRate}%</small>
-                          <button onClick={() => toggleBranch(node.id)}>
+                          <button type="button" onClick={() => toggleBranch(node.id)}>
                             {node.active ? "중지" : "활성화"}
                           </button>
                         </li>
@@ -3183,6 +3461,7 @@ function App() {
                       <small>현재 권한으로 KYC 처리 불가 (CS/SUPER 필요)</small>
                     ) : null}
                     <table>
+                      <caption className="visuallyHidden">KYC 심사 대상 목록</caption>
                       <thead>
                         <tr>
                           <th>사용자</th>
@@ -3199,15 +3478,19 @@ function App() {
                             <td>{row.status}</td>
                             <td className="rowActions">
                               <button
-                                disabled={adminRole === "OPS_ADMIN"}
-                                onClick={() => updateKycStatus(row.id, "APPROVED")}
+                                type="button"
+                                disabled={adminRole === "OPS_ADMIN" || kycActionId === row.id}
+                                aria-busy={kycActionId === row.id}
+                                onClick={() => void updateKycStatus(row.id, "APPROVED")}
                               >
                                 승인
                               </button>
                               <button
-                                disabled={adminRole === "OPS_ADMIN"}
+                                type="button"
+                                disabled={adminRole === "OPS_ADMIN" || kycActionId === row.id}
+                                aria-busy={kycActionId === row.id}
                                 className="ghost"
-                                onClick={() => updateKycStatus(row.id, "REJECTED")}
+                                onClick={() => void updateKycStatus(row.id, "REJECTED")}
                               >
                                 반려
                               </button>
@@ -3223,6 +3506,7 @@ function App() {
                       <small>현재 권한으로 정산 처리 불가 (OPS/SUPER 필요)</small>
                     ) : null}
                     <table>
+                      <caption className="visuallyHidden">정산 배치 목록</caption>
                       <thead>
                         <tr>
                           <th>기간</th>
@@ -3242,7 +3526,12 @@ function App() {
                             <td>{batch.netRevenueUsdt.toLocaleString()} USDT</td>
                             <td>{batch.status}</td>
                             <td>
-                              <button disabled={adminRole === "CS_ADMIN"} onClick={() => cycleSettlement(batch.id)}>
+                              <button
+                                type="button"
+                                disabled={adminRole === "CS_ADMIN" || settlementProgressId === batch.id}
+                                aria-busy={settlementProgressId === batch.id}
+                                onClick={() => void cycleSettlement(batch.id)}
+                              >
                                 상태 진행
                               </button>
                             </td>
@@ -3258,7 +3547,11 @@ function App() {
                         <li key={rule.id}>
                           <strong>{rule.name}</strong>
                           <small>임계값: {rule.threshold}</small>
-                          <button disabled={adminRole === "CS_ADMIN"} onClick={() => toggleRiskRule(rule.id)}>
+                          <button
+                            type="button"
+                            disabled={adminRole === "CS_ADMIN"}
+                            onClick={() => toggleRiskRule(rule.id)}
+                          >
                             {rule.enabled ? "비활성화" : "활성화"}
                           </button>
                         </li>
@@ -3281,7 +3574,7 @@ function App() {
                         <li key={notice.id}>
                           <strong>{notice.title}</strong>
                           <small>대상: {notice.audience}</small>
-                          <button onClick={() => toggleNotice(notice.id)}>
+                          <button type="button" onClick={() => toggleNotice(notice.id)}>
                             {notice.active ? "비노출" : "노출"}
                           </button>
                         </li>
@@ -3342,6 +3635,7 @@ function App() {
                   <div className="card stack">
                     <h3>출금 승인 센터 (OPS/SUPER)</h3>
                     <table>
+                      <caption className="visuallyHidden">출금 승인 대기 및 처리 목록</caption>
                       <thead>
                         <tr>
                           <th>ID</th>
@@ -3362,15 +3656,27 @@ function App() {
                             <td>{w.status}</td>
                             <td className="rowActions">
                               <button
-                                disabled={adminRole === "CS_ADMIN" || w.status !== "PENDING"}
-                                onClick={() => decideWithdrawal(w.id, "APPROVED")}
+                                type="button"
+                                disabled={
+                                  adminRole === "CS_ADMIN" ||
+                                  w.status !== "PENDING" ||
+                                  withdrawalDecisionId === w.id
+                                }
+                                aria-busy={withdrawalDecisionId === w.id}
+                                onClick={() => void decideWithdrawal(w.id, "APPROVED")}
                               >
                                 승인
                               </button>
                               <button
+                                type="button"
                                 className="ghost"
-                                disabled={adminRole === "CS_ADMIN" || w.status !== "PENDING"}
-                                onClick={() => decideWithdrawal(w.id, "REJECTED")}
+                                disabled={
+                                  adminRole === "CS_ADMIN" ||
+                                  w.status !== "PENDING" ||
+                                  withdrawalDecisionId === w.id
+                                }
+                                aria-busy={withdrawalDecisionId === w.id}
+                                onClick={() => void decideWithdrawal(w.id, "REJECTED")}
                               >
                                 거절
                               </button>
@@ -3383,6 +3689,7 @@ function App() {
                   <div className="card">
                     <h3>레퍼럴 시스템</h3>
                     <table>
+                      <caption className="visuallyHidden">레퍼럴 규칙 목록</caption>
                       <thead>
                         <tr>
                           <th>코드</th>
@@ -3400,7 +3707,7 @@ function App() {
                             <td>{rule.level2Rate}%</td>
                             <td>{rule.enabled ? "활성" : "중지"}</td>
                             <td>
-                              <button onClick={() => toggleReferral(rule.id)}>
+                              <button type="button" onClick={() => toggleReferral(rule.id)}>
                                 {rule.enabled ? "중지" : "활성화"}
                               </button>
                             </td>
@@ -3420,92 +3727,7 @@ function App() {
   );
 }
 
-type TradePanelProps = {
-  isPractice: boolean;
-  setIsPractice: (value: boolean) => void;
-  activeBalance: number;
-  qty: number;
-  setQty: (value: number) => void;
-  leverage: number;
-  setLeverage: (value: number) => void;
-  side: OrderSide;
-  setSide: (value: OrderSide) => void;
-  orderType: OrderType;
-  setOrderType: (value: OrderType) => void;
-  limitPrice: number;
-  setLimitPrice: (value: number) => void;
-  estimatedCost: number;
-  submitOrder: () => void;
-  allowLeverage: boolean;
-  orderUiMode: OrderUiMode;
-  setOrderUiMode: (value: OrderUiMode) => void;
-  speedQty: number;
-  setSpeedQty: (value: number) => void;
-  speedPrice: number;
-  setSpeedPrice: (value: number) => void;
-  symbol: string;
-  tickSize: number;
-  marketPrice: number;
-  speedOpenOrders: SpeedOpenOrder[];
-  onAmendLatestSpeedOrder: () => void;
-  onCancelAllSpeedOrders: () => void;
-  onAmendSpeedOrderById: (id: string, deltaTicks: number) => void;
-  onCancelSpeedOrderById: (id: string) => void;
-  speedPendingBookKey: string | null;
-  speedMultiTicks: number;
-  setSpeedMultiTicks: (value: number) => void;
-  speedMultiCount: number;
-  setSpeedMultiCount: (value: number) => void;
-  placeSpeedMultiOrders: (entrySide: OrderSide) => void;
-  speedMitEnabled: boolean;
-  setSpeedMitEnabled: (value: boolean) => void;
-  speedMitTrigger: number;
-  setSpeedMitTrigger: (value: number) => void;
-  speedMitOffsetTicks: number;
-  setSpeedMitOffsetTicks: (value: number) => void;
-  speedMitExecMode: MitExecMode;
-  setSpeedMitExecMode: (value: MitExecMode) => void;
-  registerMitOrder: (entrySide: OrderSide) => void;
-  cancelMitOrderById: (id: string) => void;
-  speedMitOrders: SpeedMitOrder[];
-  speedUseOco: boolean;
-  setSpeedUseOco: (value: boolean) => void;
-  speedTpTicks: number;
-  setSpeedTpTicks: (value: number) => void;
-  speedSlTicks: number;
-  setSpeedSlTicks: (value: number) => void;
-  speedFills: SpeedFill[];
-  speedBottomTab: "OPEN" | "FILLS";
-  setSpeedBottomTab: (value: "OPEN" | "FILLS") => void;
-  speedFillFilter: SpeedFillFilter;
-  setSpeedFillFilter: (value: SpeedFillFilter) => void;
-  speedOpenSort: SpeedListSort;
-  setSpeedOpenSort: (value: SpeedListSort) => void;
-  speedMitSort: SpeedListSort;
-  setSpeedMitSort: (value: SpeedListSort) => void;
-  speedFillSort: SpeedListSort;
-  setSpeedFillSort: (value: SpeedListSort) => void;
-  exportSpeedFillsCsv: () => void;
-  formatKst: (iso: string) => string;
-  marketGroupLabel: string;
-  speedToggleConfirm: boolean;
-  setSpeedToggleConfirm: (value: boolean) => void;
-  speedPanelTab: SpeedPanelTab;
-  setSpeedPanelTab: (value: SpeedPanelTab) => void;
-  speedSummaryCollapsed: boolean;
-  setSpeedSummaryCollapsed: (value: boolean) => void;
-  speedFillSearch: string;
-  setSpeedFillSearch: (value: string) => void;
-  speedOpenWarnThreshold: number;
-  setSpeedOpenWarnThreshold: (value: number) => void;
-  speedMitWarnThreshold: number;
-  setSpeedMitWarnThreshold: (value: number) => void;
-  futuresContractMode: boolean;
-};
-
 function TradePanel({
-  isPractice,
-  setIsPractice,
   activeBalance,
   qty,
   setQty,
@@ -3519,6 +3741,7 @@ function TradePanel({
   setLimitPrice,
   estimatedCost,
   submitOrder,
+  orderSubmitting,
   allowLeverage,
   orderUiMode,
   setOrderUiMode,
@@ -3583,9 +3806,17 @@ function TradePanel({
   setSpeedOpenWarnThreshold,
   speedMitWarnThreshold,
   setSpeedMitWarnThreshold,
-  futuresContractMode
+  futuresContractMode,
+  isCryptoDesk,
+  cryptoOrderEntryMode,
+  setCryptoOrderEntryMode,
+  cryptoNotionalUsdt,
+  setCryptoNotionalUsdt,
+  cryptoAssetSummary,
+  cryptoSummaryDetached
 }: TradePanelProps) {
   const speedDecimals = priceDecimalsForTick(tickSize);
+  const priceFracDigits = Math.min(16, Math.max(0, priceDecimalsForTick(tickSize)));
   const qtyCaption = futuresContractMode ? "계약수" : "수량";
   const qtyStep = futuresContractMode ? 1 : 0.001;
   const [openVisible, setOpenVisible] = useState(5);
@@ -3654,18 +3885,10 @@ function TradePanel({
   return (
     <div className="stack">
       <div className="card twoCol">
-        <button className={isPractice ? "activeBtn" : ""} onClick={() => setIsPractice(true)}>
-          모의투자 계정
-        </button>
-        <button className={!isPractice ? "activeBtn" : ""} onClick={() => setIsPractice(false)}>
-          실거래 계정
-        </button>
-      </div>
-      <div className="card twoCol">
-        <button className={orderUiMode === "BASIC" ? "activeBtn" : ""} onClick={() => setOrderUiMode("BASIC")}>
+        <button type="button" className={orderUiMode === "BASIC" ? "activeBtn" : ""} onClick={() => setOrderUiMode("BASIC")}>
           기본 주문
         </button>
-        <button className={orderUiMode === "SPEED" ? "activeBtn" : ""} onClick={() => setOrderUiMode("SPEED")}>
+        <button type="button" className={orderUiMode === "SPEED" ? "activeBtn" : ""} onClick={() => setOrderUiMode("SPEED")}>
           스피드 주문
         </button>
       </div>
@@ -3708,18 +3931,34 @@ function TradePanel({
           {speedPanelTab === "ORDER" ? (
             <>
               <div className="twoCol">
-                <button onClick={() => setSpeedPrice(marketPrice)}>현</button>
-                <button className="buyBtn" onClick={() => setOrderType("LIMIT")}>신</button>
+                <button type="button" onClick={() => setSpeedPrice(marketPrice)}>
+                  현
+                </button>
+                <button type="button" className="buyBtn" onClick={() => setOrderType("LIMIT")}>
+                  신
+                </button>
               </div>
               <div className="twoCol">
-                <button onClick={onAmendLatestSpeedOrder}>정</button>
-                <button className="ghost cancelBtn" onClick={onCancelAllSpeedOrders}>취</button>
+                <button type="button" onClick={onAmendLatestSpeedOrder}>
+                  정
+                </button>
+                <button type="button" className="ghost cancelBtn" onClick={onCancelAllSpeedOrders}>
+                  취
+                </button>
               </div>
               <div className="twoCol">
-                <button className={`${side === "SHORT" ? "activeBtn" : ""} sellBtn`} onClick={() => setSide("SHORT")}>
+                <button
+                  type="button"
+                  className={`${side === "SHORT" ? "activeBtn" : ""} sellBtn`}
+                  onClick={() => setSide("SHORT")}
+                >
                   F1 매도(숏)
                 </button>
-                <button className={`${side === "LONG" ? "activeBtn" : ""} buyBtn`} onClick={() => setSide("LONG")}>
+                <button
+                  type="button"
+                  className={`${side === "LONG" ? "activeBtn" : ""} buyBtn`}
+                  onClick={() => setSide("LONG")}
+                >
                   F2 매수(롱)
                 </button>
               </div>
@@ -3749,11 +3988,44 @@ function TradePanel({
                   />
                 </label>
               </div>
+              {allowLeverage ? (
+                <LeverageControl
+                  leverage={leverage}
+                  setLeverage={setLeverage}
+                  tickSize={tickSize}
+                  side={side}
+                  orderType={orderType}
+                  limitPrice={limitPrice}
+                  marketPrice={marketPrice}
+                  variant="compact"
+                  priceBasis={speedPrice}
+                />
+              ) : null}
               <div className="twoCol">
-                <button onClick={() => setSpeedPrice(Number((speedPrice + tickSize).toFixed(speedDecimals)))}>+1틱</button>
-                <button onClick={() => setSpeedPrice(Number(Math.max(tickSize, speedPrice - tickSize).toFixed(speedDecimals)))}>-1틱</button>
+                <button
+                  type="button"
+                  onClick={() => setSpeedPrice(Number((speedPrice + tickSize).toFixed(speedDecimals)))}
+                >
+                  +1틱
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSpeedPrice(Number(Math.max(tickSize, speedPrice - tickSize).toFixed(speedDecimals)))
+                  }
+                >
+                  -1틱
+                </button>
               </div>
-              <button className="speedSpan2 buyBtn" onClick={submitOrder}>즉시 주문 실행</button>
+              <button
+                type="button"
+                className="speedSpan2 buyBtn"
+                disabled={orderSubmitting}
+                aria-busy={orderSubmitting}
+                onClick={submitOrder}
+              >
+                {orderSubmitting ? "처리 중…" : "즉시 주문 실행"}
+              </button>
             </>
           ) : null}
           {speedPanelTab === "AUTO" ? (
@@ -3780,8 +4052,12 @@ function TradePanel({
                 </label>
               </div>
               <div className="twoCol">
-                <button className="buyBtn" onClick={() => placeSpeedMultiOrders("LONG")}>다중 매수</button>
-                <button className="ghost sellBtn" onClick={() => placeSpeedMultiOrders("SHORT")}>다중 매도</button>
+                <button type="button" className="buyBtn" onClick={() => placeSpeedMultiOrders("LONG")}>
+                  다중 매수
+                </button>
+                <button type="button" className="ghost sellBtn" onClick={() => placeSpeedMultiOrders("SHORT")}>
+                  다중 매도
+                </button>
               </div>
               <div className="twoCol">
                 <label>
@@ -3840,8 +4116,12 @@ function TradePanel({
                 </label>
               </div>
               <div className="twoCol">
-                <button className="buyBtn" onClick={() => registerMitOrder("LONG")}>MIT 매수 등록</button>
-                <button className="ghost sellBtn" onClick={() => registerMitOrder("SHORT")}>MIT 매도 등록</button>
+                <button type="button" className="buyBtn" onClick={() => registerMitOrder("LONG")}>
+                  MIT 매수 등록
+                </button>
+                <button type="button" className="ghost sellBtn" onClick={() => registerMitOrder("SHORT")}>
+                  MIT 매도 등록
+                </button>
               </div>
               <small>MIT 대기: {speedMitOrders.length}건</small>
               <label>
@@ -3859,13 +4139,17 @@ function TradePanel({
                       <div>
                         {m.side} trg:{m.trigger} off:{m.offsetTicks}t {m.execMode} qty:{m.qty}
                       </div>
-                      <button className="ghost cancelBtn" onClick={() => cancelMitOrderById(m.id)}>취소</button>
+                      <button type="button" className="ghost cancelBtn" onClick={() => cancelMitOrderById(m.id)}>
+                        취소
+                      </button>
                     </li>
                   ))}
                 </ul>
               ) : null}
               {speedMitOrders.length > mitVisible ? (
-                <button className="ghost" onClick={() => setMitVisible((v) => v + 4)}>MIT 더보기</button>
+                <button type="button" className="ghost" onClick={() => setMitVisible((v) => v + 4)}>
+                  MIT 더보기
+                </button>
               ) : null}
             </>
           ) : null}
@@ -3873,10 +4157,18 @@ function TradePanel({
             <>
               {speedPendingBookKey ? <small>더블클릭 대기중: {speedPendingBookKey}</small> : null}
               <div className="twoCol">
-                <button className={speedBottomTab === "OPEN" ? "activeBtn" : ""} onClick={() => setSpeedBottomTab("OPEN")}>
+                <button
+                  type="button"
+                  className={speedBottomTab === "OPEN" ? "activeBtn" : ""}
+                  onClick={() => setSpeedBottomTab("OPEN")}
+                >
                   미체결 {speedOpenOrders.length}
                 </button>
-                <button className={speedBottomTab === "FILLS" ? "activeBtn" : ""} onClick={() => setSpeedBottomTab("FILLS")}>
+                <button
+                  type="button"
+                  className={speedBottomTab === "FILLS" ? "activeBtn" : ""}
+                  onClick={() => setSpeedBottomTab("FILLS")}
+                >
                   체결 {speedFills.length}
                 </button>
               </div>
@@ -3897,15 +4189,23 @@ function TradePanel({
                           {o.side} {o.qty} @ {o.price} {o.ocoRole ? `[${o.ocoRole}]` : ""}
                         </div>
                         <div className="rowActions">
-                          <button className="ghost" onClick={() => onAmendSpeedOrderById(o.id, -1)}>-1틱</button>
-                          <button className="ghost" onClick={() => onAmendSpeedOrderById(o.id, 1)}>+1틱</button>
-                          <button className="cancelBtn" onClick={() => onCancelSpeedOrderById(o.id)}>취소</button>
+                          <button type="button" className="ghost" onClick={() => onAmendSpeedOrderById(o.id, -1)}>
+                            -1틱
+                          </button>
+                          <button type="button" className="ghost" onClick={() => onAmendSpeedOrderById(o.id, 1)}>
+                            +1틱
+                          </button>
+                          <button type="button" className="cancelBtn" onClick={() => onCancelSpeedOrderById(o.id)}>
+                            취소
+                          </button>
                         </div>
                       </li>
                     ))}
                   </ul>
                   {speedOpenOrders.length > openVisible ? (
-                    <button className="ghost" onClick={() => setOpenVisible((v) => v + 5)}>미체결 더보기</button>
+                    <button type="button" className="ghost" onClick={() => setOpenVisible((v) => v + 5)}>
+                      미체결 더보기
+                    </button>
                   ) : null}
                 </>
               ) : (
@@ -3937,7 +4237,9 @@ function TradePanel({
                       <option value="PRICE_DESC">가격 높은순</option>
                     </select>
                   </label>
-                  <button className="ghost" onClick={exportSpeedFillsCsv}>CSV 내보내기</button>
+                  <button type="button" className="ghost" onClick={exportSpeedFillsCsv}>
+                    CSV 내보내기
+                  </button>
                   <ul ref={fillsSectionRef} className="list">
                     {speedFills.slice(0, fillVisible).map((f) => (
                       <li key={f.id}>
@@ -3962,7 +4264,9 @@ function TradePanel({
                     ))}
                   </ul>
                   {speedFills.length > fillVisible ? (
-                    <button className="ghost" onClick={() => setFillVisible((v) => v + 6)}>체결 더보기</button>
+                    <button type="button" className="ghost" onClick={() => setFillVisible((v) => v + 6)}>
+                      체결 더보기
+                    </button>
                   ) : null}
                 </>
               )}
@@ -4084,63 +4388,198 @@ function TradePanel({
         </div>
       ) : null}
       {orderUiMode === "BASIC" ? (
-      <div className="card stack">
-        <p>사용 가능 자산: {activeBalance.toFixed(2)} USDT</p>
-        <div className="twoCol">
-          <button className={side === "LONG" ? "activeBtn" : ""} onClick={() => setSide("LONG")}>
+      <div className={`card stack tg-basic-order-card${isCryptoDesk ? " tg-order-compact" : ""}`}>
+        {isCryptoDesk && cryptoAssetSummary && !cryptoSummaryDetached ? (
+          <CryptoAssetSummary model={cryptoAssetSummary} />
+        ) : !isCryptoDesk ? (
+          <p className="tg-order-balance-line">사용 가능 자산: {activeBalance.toFixed(2)} USDT</p>
+        ) : cryptoSummaryDetached ? (
+          <p className="tg-compact-avail">
+            가용 <strong>{formatCommaNumber(activeBalance, 4)}</strong> USDT
+          </p>
+        ) : null}
+
+        {isCryptoDesk && cryptoOrderEntryMode != null && setCryptoOrderEntryMode ? (
+          <div className="tg-crypto-entry-tabs twoCol tg-crypto-entry-tabs--compact" role="tablist" aria-label="주문 입력 방식">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={cryptoOrderEntryMode === "PRICE"}
+              className={cryptoOrderEntryMode === "PRICE" ? "activeBtn" : ""}
+              onClick={() => setCryptoOrderEntryMode("PRICE")}
+            >
+              가격주문
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={cryptoOrderEntryMode === "NOTIONAL"}
+              className={cryptoOrderEntryMode === "NOTIONAL" ? "activeBtn" : ""}
+              onClick={() => {
+                const refPx = orderType === "MARKET" ? marketPrice : limitPrice;
+                if (setCryptoNotionalUsdt && Number.isFinite(refPx) && refPx > 0) {
+                  setCryptoNotionalUsdt(refPx * qty);
+                }
+                setCryptoOrderEntryMode("NOTIONAL");
+              }}
+            >
+              금액주문
+            </button>
+          </div>
+        ) : null}
+
+        <div className={isCryptoDesk ? "tg-order-side-row twoCol" : "twoCol"}>
+          <button type="button" className={side === "LONG" ? "activeBtn tg-side-long" : "tg-side-long"} onClick={() => setSide("LONG")}>
             LONG
           </button>
-          <button className={side === "SHORT" ? "activeBtn" : ""} onClick={() => setSide("SHORT")}>
+          <button type="button" className={side === "SHORT" ? "activeBtn tg-side-short" : "tg-side-short"} onClick={() => setSide("SHORT")}>
             SHORT
           </button>
         </div>
-        <div className="twoCol">
+        <div className={isCryptoDesk ? "tg-order-type-row tg-mini-tabs twoCol" : "twoCol"}>
           <button
+            type="button"
             className={orderType === "MARKET" ? "activeBtn" : ""}
             onClick={() => setOrderType("MARKET")}
           >
             시장가
           </button>
           <button
+            type="button"
             className={orderType === "LIMIT" ? "activeBtn" : ""}
             onClick={() => setOrderType("LIMIT")}
           >
             지정가
           </button>
         </div>
-        {orderType === "LIMIT" && (
-          <input
-            type="number"
-            value={limitPrice}
-            onChange={(e) => setLimitPrice(Number(e.target.value))}
-            placeholder="지정가"
+
+        {isCryptoDesk && cryptoOrderEntryMode === "NOTIONAL" && setCryptoNotionalUsdt ? (
+          <>
+            {orderType === "LIMIT" ? (
+              <label className="tg-field tg-field--compact">
+                <span className="tg-field-label">지정가 (USDT)</span>
+                <CommaDecimalInput
+                  className="tg-comma-input"
+                  value={limitPrice}
+                  onChange={setLimitPrice}
+                  maximumFractionDigits={priceFracDigits}
+                  aria-label="지정가"
+                />
+              </label>
+            ) : (
+              <p className="tg-crypto-hint">
+                시장가 주문 · 기준 현재가{" "}
+                <strong>{formatCommaNumber(marketPrice, Math.max(2, priceFracDigits))}</strong> USDT
+              </p>
+            )}
+            <label className="tg-field tg-field--compact">
+              <span className="tg-field-label">주문금액 (USDT)</span>
+              <CommaDecimalInput
+                className="tg-comma-input"
+                value={cryptoNotionalUsdt ?? 0}
+                onChange={(n) => setCryptoNotionalUsdt?.(n)}
+                maximumFractionDigits={4}
+                aria-label="주문 금액"
+              />
+            </label>
+            <p className="tg-crypto-derived">
+              예상 수량: <strong>{formatCommaNumber(qty, 8)}</strong>{" "}
+              <span className="tg-muted">{symbol}</span>
+            </p>
+          </>
+        ) : null}
+
+        {isCryptoDesk && cryptoOrderEntryMode === "PRICE" ? (
+          <>
+            {orderType === "LIMIT" ? (
+              <label className="tg-field tg-field--compact">
+                <span className="tg-field-label">주문 가격 (USDT)</span>
+                <CommaDecimalInput
+                  className="tg-comma-input"
+                  value={limitPrice}
+                  onChange={setLimitPrice}
+                  maximumFractionDigits={priceFracDigits}
+                  aria-label="주문 가격"
+                />
+              </label>
+            ) : (
+              <p className="tg-crypto-hint">
+                시장가 · 기준가{" "}
+                <strong>{formatCommaNumber(marketPrice, Math.max(2, priceFracDigits))}</strong> USDT
+              </p>
+            )}
+            <label className="tg-field tg-field--compact">
+              <span className="tg-field-label">{qtyCaption}</span>
+              <CommaDecimalInput
+                className="tg-comma-input"
+                value={qty}
+                onChange={(next) =>
+                  setQty(futuresContractMode ? Math.max(1, Math.round(next || 1)) : next)
+                }
+                maximumFractionDigits={8}
+                aria-label={qtyCaption}
+              />
+            </label>
+            <p className="tg-crypto-order-notional">
+              주문금액 약{" "}
+              <strong>
+                {formatCommaNumber((orderType === "MARKET" ? marketPrice : limitPrice) * qty, 4)} USDT
+              </strong>
+            </p>
+          </>
+        ) : null}
+
+        {!isCryptoDesk ? (
+          <>
+            {orderType === "LIMIT" && (
+              <input
+                type="number"
+                value={limitPrice}
+                onChange={(e) => setLimitPrice(Number(e.target.value))}
+                placeholder="지정가"
+              />
+            )}
+            <input
+              type="number"
+              step={qtyStep}
+              value={qty}
+              onChange={(e) =>
+                setQty(
+                  futuresContractMode
+                    ? Math.max(1, Math.round(Number(e.target.value) || 1))
+                    : Number(e.target.value)
+                )
+              }
+              placeholder={qtyCaption}
+            />
+          </>
+        ) : null}
+
+        {allowLeverage ? (
+          <LeverageControl
+            leverage={leverage}
+            setLeverage={setLeverage}
+            tickSize={tickSize}
+            side={side}
+            orderType={orderType}
+            limitPrice={limitPrice}
+            marketPrice={marketPrice}
+            variant="full"
           />
-        )}
-        <input
-          type="number"
-          step={qtyStep}
-          value={qty}
-          onChange={(e) =>
-            setQty(
-              futuresContractMode
-                ? Math.max(1, Math.round(Number(e.target.value) || 1))
-                : Number(e.target.value)
-            )
-          }
-          placeholder={qtyCaption}
-        />
-        {allowLeverage && (
-          <input
-            type="number"
-            min={1}
-            max={100}
-            value={leverage}
-            onChange={(e) => setLeverage(Number(e.target.value))}
-            placeholder="레버리지"
-          />
-        )}
-        <p>예상 증거금: {estimatedCost.toFixed(2)} USDT</p>
-        <button onClick={submitOrder}>주문 실행</button>
+        ) : null}
+        <p className="tg-margin-est">
+          예상 증거금:{" "}
+          {isCryptoDesk ? `${formatCommaNumber(estimatedCost, 4)} USDT` : `${estimatedCost.toFixed(2)} USDT`}
+        </p>
+        <button
+          type="button"
+          className="tg-submit-order"
+          disabled={orderSubmitting}
+          aria-busy={orderSubmitting}
+          onClick={submitOrder}
+        >
+          {orderSubmitting ? "처리 중…" : "주문 실행"}
+        </button>
       </div>
       ) : null}
     </div>

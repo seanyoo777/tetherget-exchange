@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-05-10T16:10:00+09:00",
+  "updatedAt": "2026-05-10T18:45:00+09:00",
   "weights": {
     "frontend": 0.3,
     "backend": 0.35,
@@ -7,10 +7,10 @@
     "devops": 0.1
   },
   "scores": {
-    "frontend": 58,
+    "frontend": 59,
     "backend": 40,
     "database": 12,
-    "devops": 55
+    "devops": 57
   },
-  "notes": "프론트: 데모급 CEX UI+Bitget+Vitest. 백: Express+JWT+시뮬 매칭. DB: json 스냅샷만. 운영: CI/배포 파일 있음."
+  "notes": "프론트: CEX UI·세션 토큰 마스킹·Bitget·Vitest. 백: Express+JWT+시뮬 매칭·backend/.env.example. DB: json 스냅샷만. 운영: CI·completion-status 검증."
 }

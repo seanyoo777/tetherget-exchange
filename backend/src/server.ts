@@ -1261,7 +1261,7 @@ app.post("/api/admin/exchange/match-once", (req, res) => {
 
 assertJwtConfigOrExit();
 
-const port = Number(process.env.PORT ?? 4000);
+const port = Number(process.env.PORT ?? 4720);
 const matchTickMs = Number(process.env.MATCH_TICK_MS ?? 8000);
 
 let matchInterval: ReturnType<typeof setInterval> | undefined;

@@ -4,10 +4,15 @@
 
 만들어진 화면과 API 연동을 로컬에서 바로 확인하는 방법입니다.
 
-### 로컬만
+### 로컬 전용 포트 (다른 레포 기본값과 겹치지 않도록 고정)
 
-- 웹: `http://localhost:5173`
-- API는 같은 PC에서는 브라우저가 **`/api` → 자동으로 백엔드(4000)** 로 넘어가도록 설정됨.
+| 용도 | 주소 |
+|------|------|
+| 웹 (Vite dev) | `http://localhost:5720` |
+| 빌드 미리보기 | `http://localhost:5721` |
+| 백엔드 API 직접 호출 | `http://localhost:4720` |
+
+브라우저에서는 **`/api` → Vite 프록시가 백엔드 4720으로** 넘깁니다.
 
 ### 인터넷에서 열리는 주소(공유용)
 
@@ -30,7 +35,7 @@ npm run tunnel
 - 처음 접속 시 브라우저에서 IP 확인 페이지가 뜰 수 있습니다(localtunnel 특성).
 - 터널을 켠 PC와 `npm run dev:full`이 **계속 켜져 있어야** 링크가 동작합니다.
 
-빌드 미리보기(`4173`)에 터널을 붙이려면 `npm run preview:full` 실행 후 다른 터미널에서 `npm run tunnel:preview`
+빌드 미리보기(`5721`)에 터널을 붙이려면 `npm run preview:full` 실행 후 다른 터미널에서 `npm run tunnel:preview`
 
 ## 한 번에 실행 (추천)
 
@@ -42,8 +47,8 @@ npm install --prefix backend
 npm run dev:full
 ```
 
-- 웹 UI: 브라우저가 자동으로 열립니다. 보통 `http://localhost:5173`
-- 백엔드 API: `http://localhost:4000`
+- 웹 UI: 브라우저가 자동으로 열립니다. 보통 `http://localhost:5720`
+- 백엔드 API: `http://localhost:4720`
 
 로그인 후 거래·출금·관리자 기능은 백엔드가 떠 있어야 동작합니다.
 
@@ -79,8 +84,8 @@ API까지 같이 보려면:
 npm run preview:full
 ```
 
-- 웹: `http://localhost:4173` (또는 터미널에 표시된 주소)
-- API: `http://localhost:4000`
+- 웹: `http://localhost:5721` (또는 터미널에 표시된 주소)
+- API: `http://localhost:4720`
 
 ## 빠른 테스트 계정
 

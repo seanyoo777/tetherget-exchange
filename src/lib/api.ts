@@ -8,7 +8,7 @@ import {
 
 export { PlatformApiError, PlatformErrorCodes, PlatformHttpHeaders, newCorrelationId } from "@tetherget/contracts";
 
-/** 비우면 같은 도메인의 `/api`로 요청 → Vite 프록시가 백엔드(4000)로 넘김. 터널 URL 공유 시 필수. */
+/** 비우면 같은 도메인의 `/api`로 요청 → Vite 프록시가 이 레포 백엔드(기본 4720)로 넘김. 터널 URL 공유 시 필수. */
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
 
 function apiUrl(path: string): string {
