@@ -161,6 +161,109 @@ body {
   color: #fff;
 }
 
+.tradingShell {
+  display: grid;
+  grid-template-columns: minmax(168px, 210px) 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+@media (max-width: 720px) {
+  .tradingShell {
+    grid-template-columns: 1fr;
+  }
+
+  .symbolRail-list {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .symbolRail-list li {
+    flex: 0 0 auto;
+  }
+
+  .symbolRail-row {
+    min-width: 118px;
+  }
+}
+
+.symbolRail {
+  position: sticky;
+  top: 12px;
+}
+
+.symbolRail-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #30363d;
+}
+
+.symbolRail-title {
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.symbolRail-src {
+  font-size: 11px;
+  color: #8b949e;
+}
+
+.symbolRail-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.symbolRail-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: #0d1117;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.symbolRail-row:hover {
+  border-color: #30363d;
+  background: #21262d;
+}
+
+.symbolRail-row--active {
+  border-color: #1f6feb;
+  background: #1f6feb1a;
+}
+
+.symbolRail-sym {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.symbolRail-px {
+  font-size: 12px;
+  color: #8b949e;
+  font-variant-numeric: tabular-nums;
+}
+
+.symbolRail-row--active .symbolRail-px {
+  color: #79c0ff;
+}
+
 .grid {
   display: grid;
   gap: 10px;

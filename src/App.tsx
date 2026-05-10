@@ -1688,6 +1688,19 @@ function App() {
     notifySpeedEvent("MIT 대기 주문 1건 취소");
   };
 
+  const tradingShellPaths = ["/exchange", "/spot", "/futures", "/simulation"];
+  const showSymbolRail = tradingShellPaths.includes(location.pathname);
+  const futuresTabActive =
+    location.pathname === "/futures" ||
+    location.pathname === "/exchange" ||
+    location.pathname === "/simulation";
+  const midHintForSymbol = (s: string) => {
+    const k = s.trim().toUpperCase();
+    if (exchangeSimMids[k] != null) return exchangeSimMids[k];
+    if (s === symbol) return price;
+    return null;
+  };
+
   return (
     <div className="app">
       <header className="header">
@@ -1707,7 +1720,7 @@ function App() {
             </NavLink>
             <NavLink
               to="/futures"
-              className={({ isActive }) => (isActive ? "tradeModeTab tradeModeTab--active" : "tradeModeTab")}
+              className={() => (futuresTabActive ? "tradeModeTab tradeModeTab--active" : "tradeModeTab")}
             >
               Futures
             </NavLink>
@@ -1779,7 +1792,38 @@ function App() {
         })}
       </div>
 
-      <main className="grid">
+      <div className={showSymbolRail ? "tradingShell" : undefined}>
+        {showSymbolRail ? (
+          <aside className="symbolRail panel" aria-label="심볼·시세 목록">
+            <div className="symbolRail-head">
+              <span className="symbolRail-title">{marketCfg.label}</span>
+              <span className="symbolRail-src">{marketCfg.sourceLabel}</span>
+            </div>
+            <ul className="symbolRail-list">
+              {marketCfg.symbols.map((s) => {
+                const mid = midHintForSymbol(s);
+                return (
+                  <li key={s}>
+                    <button
+                      type="button"
+                      className={symbol === s ? "symbolRail-row symbolRail-row--active" : "symbolRail-row"}
+                      onClick={() => setSymbol(s)}
+                    >
+                      <span className="symbolRail-sym">{s}</span>
+                      <span className="symbolRail-px">
+                        {mid != null
+                          ? mid.toLocaleString(undefined, { maximumFractionDigits: Math.max(2, decimals) })
+                          : "—"}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </aside>
+        ) : null}
+
+        <main className="grid">
         {alerts.length > 0 ? (
           <div className="card">
             <strong>실시간 운영 알림:</strong> [{alerts[0].level}] {alerts[0].message}
@@ -3109,7 +3153,8 @@ function App() {
             }
           />
         </Routes>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }
