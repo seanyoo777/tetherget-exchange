@@ -28,6 +28,7 @@ import {
 } from "./lib/api";
 import { fetchBitgetMixUsdtOrderBook } from "./lib/bitgetDepth";
 import { fetchBitgetMixUsdtAllTickers } from "./lib/bitgetTickers";
+import { MARKET_PREFS_KEY, mergePersistMarketPrefs, readMarketPrefsFromStorage } from "./lib/marketPrefs";
 import { subscribeBitgetMixBooks15 } from "./lib/bitgetMixWsBook";
 import {
   calcLiquidationPrice,
@@ -270,26 +271,14 @@ const MARKET_GROUPS: Record<MarketGroupKey, MarketGroupConfig> = {
   }
 };
 
-const MARKET_PREFS_KEY = "tgx.market.prefs";
-
 function readMarketPrefs(): { marketGroup: MarketGroupKey; symbol: string } {
-  const fallback = { marketGroup: "CRYPTO" as MarketGroupKey, symbol: "BTCUSDT" };
-  try {
-    const raw = localStorage.getItem(MARKET_PREFS_KEY);
-    if (!raw) return fallback;
-    const p = JSON.parse(raw) as {
-      marketGroup?: string;
-      symbols?: Partial<Record<MarketGroupKey, string>>;
-    };
-    const mg =
-      p.marketGroup && p.marketGroup in MARKET_GROUPS ? (p.marketGroup as MarketGroupKey) : fallback.marketGroup;
-    const list = MARKET_GROUPS[mg].symbols;
-    const saved = p.symbols?.[mg];
-    const sym = saved && list.includes(saved) ? saved : list[0];
-    return { marketGroup: mg, symbol: sym };
-  } catch {
-    return fallback;
-  }
+  const r = readMarketPrefsFromStorage(
+    (k) => localStorage.getItem(k),
+    { marketGroup: "CRYPTO", symbol: "BTCUSDT" },
+    (g): g is MarketGroupKey => g in MARKET_GROUPS,
+    (mg) => MARKET_GROUPS[mg as MarketGroupKey].symbols
+  );
+  return { marketGroup: r.marketGroup as MarketGroupKey, symbol: r.symbol };
 }
 
 function symChangeKey(marketGroup: MarketGroupKey, sym: string) {
@@ -480,6 +469,8 @@ function App() {
   const [speedMitWarnThreshold, setSpeedMitWarnThreshold] = useState(5);
   const [speedEventNotice, setSpeedEventNotice] = useState("");
   const [marketLiveVolume, setMarketLiveVolume] = useState<number | null>(null);
+  /** 마지막 시세 폴링(또는 모의 갱신) 시각 ms — 레일에 표시 */
+  const [lastTickerPollAt, setLastTickerPollAt] = useState<number | null>(null);
   const notifySpeedEvent = (message: string) => {
     setSpeedEventNotice(message);
     window.setTimeout(() => {
@@ -696,14 +687,9 @@ function App() {
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(MARKET_PREFS_KEY);
-      const prev = raw ? (JSON.parse(raw) as { symbols?: Partial<Record<MarketGroupKey, string>> }) : {};
       localStorage.setItem(
         MARKET_PREFS_KEY,
-        JSON.stringify({
-          marketGroup,
-          symbols: { ...prev.symbols, [marketGroup]: symbol }
-        })
+        mergePersistMarketPrefs(localStorage.getItem(MARKET_PREFS_KEY), marketGroup, symbol)
       );
     } catch {
       /* quota / 비공개 창 */
@@ -843,6 +829,7 @@ function App() {
               setCryptoDepthFromWs(false);
             }
             setApiStatus("CONNECTED");
+            setLastTickerPollAt(Date.now());
           }
           return;
         }
@@ -873,6 +860,7 @@ function App() {
             setOrderBook(book.rows);
             setMarketLiveVolume(Number.isFinite(meta?.regularMarketVolume) ? Number(meta?.regularMarketVolume) : null);
             setApiStatus("CONNECTED");
+            setLastTickerPollAt(Date.now());
           }
           return;
         }
@@ -900,6 +888,7 @@ function App() {
           setCryptoMarkPrice(null);
           setMarketLiveVolume(null);
           setApiStatus("FALLBACK");
+          setLastTickerPollAt(Date.now());
         }
       }
     };
@@ -2048,6 +2037,17 @@ function App() {
               <span className="symbolRail-tick" title="선택 심볼 기준 최소 호가 단위">
                 호가 틱 {formatTickSizeDisplay(tickSize)}
               </span>
+              {lastTickerPollAt != null ? (
+                <span className="symbolRail-pollAt" title="시세 폴링·모의 갱신 시각">
+                  갱신{" "}
+                  {new Date(lastTickerPollAt).toLocaleTimeString("ko-KR", {
+                    hour12: false,
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit"
+                  })}
+                </span>
+              ) : null}
             </div>
             <ul className="symbolRail-list">
               {marketCfg.symbols.map((s) => {
