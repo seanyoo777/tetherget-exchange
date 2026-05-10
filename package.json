@@ -26,7 +26,8 @@
     "tunnel:preview": "npx --yes localtunnel --port 5721",
     "typecheck": "tsc -b",
     "test": "vitest run",
-    "report:completion": "node scripts/completion-report.mjs"
+    "report:completion": "node scripts/completion-report.mjs",
+    "ci": "npm run test && npm run report:completion && npm run build && npm run build:deploy"
   },
   "dependencies": {
     "@tetherget/contracts": "file:./shared/contracts",
