@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { Link, Route, Routes, useLocation } from "react-router-dom";
+import { Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import {
   ApiOrderStatus,
   ApiRole,
@@ -631,6 +631,11 @@ function App() {
       cryptoBookWsActive.current = false;
     }
   }, [marketGroup]);
+
+  useEffect(() => {
+    if (location.pathname !== "/spot") return;
+    setMarketGroup((mg) => (mg === "US_FUTURES" || mg === "KR_FUTURES" ? "CRYPTO" : mg));
+  }, [location.pathname]);
 
   useEffect(() => {
     if (location.pathname !== "/exchange") return;
@@ -1686,7 +1691,28 @@ function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>Tetherget 거래소</h1>
+        <div className="headerTop">
+          <div className="brandRow">
+            <h1>Tetherget 거래소</h1>
+            <span className="brandBadge" title="제품 코드명">
+              TGX CEX
+            </span>
+          </div>
+          <div className="tradeModeTabs" role="tablist" aria-label="현물·선물 모드">
+            <NavLink
+              to="/spot"
+              className={({ isActive }) => (isActive ? "tradeModeTab tradeModeTab--active" : "tradeModeTab")}
+            >
+              Spot
+            </NavLink>
+            <NavLink
+              to="/futures"
+              className={({ isActive }) => (isActive ? "tradeModeTab tradeModeTab--active" : "tradeModeTab")}
+            >
+              Futures
+            </NavLink>
+          </div>
+        </div>
         <p>
           중앙화 코인 거래소(CEX): 현물·선물·지갑·주문체결 구조. P2P(유저 간 직거래) 기능 없음.
         </p>

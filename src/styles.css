@@ -26,6 +26,66 @@ body {
   padding: 16px;
 }
 
+.headerTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.brandRow {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.brandBadge {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #58a6ff;
+  border: 1px solid #30363d;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.tradeModeTabs {
+  display: inline-flex;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0d1117;
+}
+
+.tradeModeTab {
+  text-decoration: none;
+  color: #8b949e;
+  padding: 8px 20px;
+  font-weight: 600;
+  font-size: 14px;
+  border: none;
+  border-right: 1px solid #30363d;
+  background: transparent;
+  cursor: pointer;
+}
+
+.tradeModeTabs .tradeModeTab:last-child {
+  border-right: none;
+}
+
+.tradeModeTab:hover {
+  color: #e6edf3;
+  background: #21262d;
+}
+
+.tradeModeTab--active {
+  color: #ffffff;
+  background: #1f6feb2e;
+}
+
 .header h1 {
   margin: 0;
   font-size: 22px;
