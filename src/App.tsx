@@ -514,6 +514,15 @@ function App() {
   const snapPrice = (v: number) => Number((Math.round(v / tickSize) * tickSize).toFixed(decimals));
 
   useEffect(() => {
+    if (marketGroup !== "CRYPTO") return;
+    const dec = priceDecimalsForTick(tickSize);
+    const snap = (v: number) => Number((Math.round(v / tickSize) * tickSize).toFixed(dec));
+    setLimitPrice((p) => snap(p));
+    setSpeedPrice((p) => snap(p));
+    setSpeedMitTrigger((t) => snap(t));
+  }, [symbol, tickSize, marketGroup]);
+
+  useEffect(() => {
     try {
       const raw = localStorage.getItem("tgx.speed.state");
       if (!raw) return;
