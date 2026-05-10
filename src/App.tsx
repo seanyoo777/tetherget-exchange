@@ -29,7 +29,7 @@ import {
 import { fetchBitgetMixUsdtOrderBook } from "./lib/bitgetDepth";
 import { fetchBitgetMixUsdtAllTickers } from "./lib/bitgetTickers";
 import { subscribeBitgetMixBooks15 } from "./lib/bitgetMixWsBook";
-import { calcLiquidationPrice, calcUnrealizedPnl, validateOrder } from "./lib/trading";
+import { calcLiquidationPrice, calcUnrealizedPnl, priceDecimalsForTick, validateOrder } from "./lib/trading";
 import { tradingViewSymbol } from "./lib/tradingViewSymbol";
 import { TradingViewEmbed } from "./components/TradingViewEmbed";
 
@@ -268,6 +268,15 @@ function symChangeKey(marketGroup: MarketGroupKey, sym: string) {
   return `${marketGroup}:${sym.trim().toUpperCase()}`;
 }
 
+/** Bitget USDT-M 심볼별 최소 호가 단위(근사). 종목 전환 시 스냅·표시 자릿수 정합용. */
+const CRYPTO_SYMBOL_TICK: Partial<Record<string, number>> = {
+  BTCUSDT: 0.1,
+  ETHUSDT: 0.01,
+  SOLUSDT: 0.01,
+  XRPUSDT: 0.0001,
+  DOGEUSDT: 0.00001
+};
+
 function ShellPage({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="panel">
@@ -463,7 +472,11 @@ function App() {
     }).format(d);
   };
   const marketCfg = MARKET_GROUPS[marketGroup];
-  const tickSize = marketCfg.tickSize;
+  const tickSize = useMemo(() => {
+    if (marketGroup !== "CRYPTO") return marketCfg.tickSize;
+    const k = symbol.trim().toUpperCase();
+    return CRYPTO_SYMBOL_TICK[k] ?? marketCfg.tickSize;
+  }, [marketGroup, marketCfg.tickSize, symbol]);
   const marketChange = symbolDayChangePct[symChangeKey(marketGroup, symbol)] ?? 0;
   const qtyLabel = marketQtyLabel(marketGroup);
   const symbolContractSpec = contractSpecForSymbol(symbol);
@@ -497,7 +510,7 @@ function App() {
     }
     return Number(v).toFixed(4);
   };
-  const decimals = tickSize >= 1 ? 0 : String(tickSize).split(".")[1]?.length ?? 2;
+  const decimals = priceDecimalsForTick(tickSize);
   const snapPrice = (v: number) => Number((Math.round(v / tickSize) * tickSize).toFixed(decimals));
 
   useEffect(() => {
@@ -3437,7 +3450,7 @@ function TradePanel({
   setSpeedMitWarnThreshold,
   futuresContractMode
 }: TradePanelProps) {
-  const speedDecimals = tickSize >= 1 ? 0 : String(tickSize).split(".")[1]?.length ?? 2;
+  const speedDecimals = priceDecimalsForTick(tickSize);
   const qtyCaption = futuresContractMode ? "계약수" : "수량";
   const qtyStep = futuresContractMode ? 1 : 0.001;
   const [openVisible, setOpenVisible] = useState(5);

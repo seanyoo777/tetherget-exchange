@@ -42,3 +42,13 @@ export function calcUnrealizedPnl(
   const diff = side === "LONG" ? markPrice - entryPrice : entryPrice - markPrice;
   return diff * qty;
 }
+
+/** 호가 틱에서 toFixed 자릿수 (10^n 틱 및 일반 소수 틱 공통). */
+export function priceDecimalsForTick(tickSize: number): number {
+  if (tickSize >= 1) return 0;
+  const lg = -Math.log10(tickSize);
+  if (Number.isFinite(lg) && Math.abs(lg - Math.round(lg)) < 1e-9) {
+    return Math.min(16, Math.max(0, Math.round(lg)));
+  }
+  return String(tickSize).split(".")[1]?.length ?? 2;
+}
