@@ -27,6 +27,7 @@ import {
   verifyAdminOtp
 } from "./lib/api";
 import { fetchBitgetMixUsdtOrderBook } from "./lib/bitgetDepth";
+import { fetchBitgetMixUsdtAllTickers } from "./lib/bitgetTickers";
 import { subscribeBitgetMixBooks15 } from "./lib/bitgetMixWsBook";
 import { calcLiquidationPrice, calcUnrealizedPnl, validateOrder } from "./lib/trading";
 import { tradingViewSymbol } from "./lib/tradingViewSymbol";
@@ -299,6 +300,8 @@ function App() {
   const [adminSymbolToggle, setAdminSymbolToggle] = useState("BTCUSDT");
   const [adminSimMidPrice, setAdminSimMidPrice] = useState("97000");
   const [exchangeSimMids, setExchangeSimMids] = useState<Record<string, number>>({});
+  /** Bitget 전종목 티커에서 온 USDT-M 현재가(레일 표시). */
+  const [cryptoTickerMids, setCryptoTickerMids] = useState<Record<string, number>>({});
   const [pendingCancelOrderId, setPendingCancelOrderId] = useState("");
   const [qty, setQty] = useState(0.01);
   const [leverage, setLeverage] = useState(5);
@@ -848,6 +851,9 @@ function App() {
   }, [marketGroup, marketCfg.symbols]);
 
   useEffect(() => {
+    if (marketGroup === "CRYPTO" && marketCfg.fetcher === "BITGET") {
+      return () => {};
+    }
     const id = window.setInterval(() => {
       setSymbolDayChangePct((prev) => {
         const next = { ...prev };
@@ -862,7 +868,45 @@ function App() {
       });
     }, 8000);
     return () => window.clearInterval(id);
-  }, [marketGroup, marketCfg.symbols, symbol]);
+  }, [marketGroup, marketCfg.fetcher, marketCfg.symbols, symbol]);
+
+  useEffect(() => {
+    if (marketGroup !== "CRYPTO" || marketCfg.fetcher !== "BITGET") {
+      setCryptoTickerMids({});
+      return;
+    }
+    let cancelled = false;
+    const syncAll = async () => {
+      try {
+        const map = await fetchBitgetMixUsdtAllTickers();
+        if (cancelled) return;
+        setCryptoTickerMids((prev) => {
+          const next = { ...prev };
+          for (const s of marketCfg.symbols) {
+            const row = map.get(s.trim().toUpperCase());
+            if (row) next[s.trim().toUpperCase()] = row.lastPr;
+          }
+          return next;
+        });
+        setSymbolDayChangePct((prev) => {
+          const next = { ...prev };
+          for (const s of marketCfg.symbols) {
+            const row = map.get(s.trim().toUpperCase());
+            if (row) next[symChangeKey("CRYPTO", s)] = row.change24hPct;
+          }
+          return next;
+        });
+      } catch {
+        if (!cancelled) setCryptoTickerMids({});
+      }
+    };
+    syncAll();
+    const id = window.setInterval(syncAll, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [marketGroup, marketCfg.fetcher, marketCfg.symbols]);
 
   useEffect(() => {
     const raw = localStorage.getItem("tetherget-session");
@@ -1744,6 +1788,7 @@ function App() {
   const midHintForSymbol = (s: string) => {
     const k = s.trim().toUpperCase();
     if (exchangeSimMids[k] != null) return exchangeSimMids[k];
+    if (marketGroup === "CRYPTO" && cryptoTickerMids[k] != null) return cryptoTickerMids[k];
     if (s === symbol) return price;
     return null;
   };
