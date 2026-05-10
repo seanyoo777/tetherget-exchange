@@ -53,6 +53,7 @@ import { LeverageControl } from "./components/LeverageControl";
 import { SpeedOrderPanel } from "./components/SpeedOrderPanel";
 import { TradingViewEmbed } from "./components/TradingViewEmbed";
 import { formatCommaNumber } from "./lib/formatComma";
+import { highlightSearchQuery } from "./lib/highlightSearch";
 import type {
   CryptoAssetSummaryModel,
   MitExecMode,
@@ -3775,19 +3776,6 @@ function TradePanel(props: TradePanelProps) {
     setFillVisible(6);
     setSpeedPanelTab("ORDER");
   };
-  const highlightText = (text: string, query: string) => {
-    const q = query.trim();
-    if (!q) return text;
-    const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const parts = text.split(new RegExp(`(${escaped})`, "ig"));
-    return parts.map((part, idx) =>
-      part.toLowerCase() === q.toLowerCase() ? (
-        <mark key={`${part}-${idx}`} className="fillMark">{part}</mark>
-      ) : (
-        <span key={`${part}-${idx}`}>{part}</span>
-      )
-    );
-  };
   useEffect(() => {
     const onSearchShortcut = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -3830,7 +3818,7 @@ function TradePanel(props: TradePanelProps) {
           applyOco={applyOco}
           applyMitEnabled={applyMitEnabled}
           resetSpeedView={resetSpeedView}
-          highlightText={highlightText}
+          highlightText={highlightSearchQuery}
           openVisible={openVisible}
           setOpenVisible={setOpenVisible}
           mitVisible={mitVisible}
