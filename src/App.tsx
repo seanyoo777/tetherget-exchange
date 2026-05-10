@@ -2176,7 +2176,7 @@ function App() {
   );
 
   const renderTradingDesk = (tpOverrides: Partial<TradePanelProps>) => (
-    <div className="tg-route-split">
+    <div className={`tg-route-split${isCryptoGroup ? " tg-route-split--cex" : ""}`}>
       <div className="tg-desk-center">
         <div className="tg-chart-toolbar">
           <span className="tg-chart-pair">{symbol}</span>
@@ -2215,18 +2215,34 @@ function App() {
           )}
         </div>
       </div>
-      <div className="tg-desk-right tg-desk-right--stack">
+      <div className={`tg-desk-right tg-desk-right--stack${isCryptoGroup ? " tg-desk-right--cex" : ""}`}>
         {isCryptoGroup ? (
           <>
-            <div className="tg-order-wrap tg-order-wrap--stack">
-              <TradePanel {...{ ...sharedTradePanelProps, ...tpOverrides }} />
-            </div>
+            <div className="tg-orderbook-wrap tg-orderbook--stack">{orderBookCard}</div>
             {cryptoCompactSummary ? (
               <div className="tg-crypto-asset-strip">
                 <CryptoAssetStrip model={cryptoCompactSummary} />
               </div>
             ) : null}
-            <div className="tg-orderbook-wrap tg-orderbook--stack">{orderBookCard}</div>
+            <div className="tg-order-wrap tg-order-wrap--stack">
+              <TradePanel {...{ ...sharedTradePanelProps, ...tpOverrides }} />
+            </div>
+            <div className="tg-desk-trades tg-pane" aria-label="최근 체결">
+              <h3 className="tg-pane-title">최근 체결</h3>
+              <div className="tg-desk-trades-scroll">
+                <ul className="tg-tape-list tg-tape-list--desk">
+                  {trades.length === 0 ? (
+                    <li className="tg-muted">체결 내역이 없습니다.</li>
+                  ) : (
+                    trades.slice(0, 16).map((t, i) => (
+                      <li key={`desk-trade-${i}`} className="tg-tape-row tg-tape-row--desk">
+                        {t}
+                      </li>
+                    ))
+                  )}
+                </ul>
+              </div>
+            </div>
           </>
         ) : (
           <>

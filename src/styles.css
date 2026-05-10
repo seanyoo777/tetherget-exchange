@@ -833,12 +833,18 @@ td {
   flex: 1;
   min-height: 0;
   height: 100vh;
+  height: 100dvh;
   max-height: 100vh;
+  max-height: 100dvh;
   padding: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   background: linear-gradient(180deg, var(--tg-bg-deep) 0%, var(--tg-bg-mid) 55%, var(--tg-bg-deep) 100%);
+}
+
+body:has(.app--terminal) {
+  overflow: hidden;
 }
 
 .app--terminal > header {
@@ -1171,6 +1177,11 @@ main.tg-main .tg-route-body {
   background: var(--tg-line2);
 }
 
+/* 코인 CEX: 차트 최대·우측 레일 넓게 */
+.tg-route-split--cex {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 32%);
+}
+
 .tg-desk-center {
   display: flex;
   flex-direction: column;
@@ -1300,15 +1311,100 @@ main.tg-main .tg-route-body {
 .tg-order-wrap {
   flex: 1 1 52%;
   min-height: 160px;
-  overflow: auto;
+  overflow: hidden;
   overscroll-behavior: contain;
   border-bottom: 1px solid var(--tg-line2);
+}
+
+.tg-desk-right:not(.tg-desk-right--cex) .tg-order-wrap {
+  overflow: auto;
 }
 
 .tg-order-wrap--stack {
   flex: 0 0 auto;
   max-height: min(40vh, 42%);
   min-height: 0;
+}
+
+/* 코인 TGX식: 오더북 상단·주문 중단 flex 성장·우측 하단 최근 체결 */
+.tg-desk-right--cex.tg-desk-right--stack {
+  gap: 0;
+}
+
+.tg-desk-right--cex .tg-orderbook-wrap.tg-orderbook--stack {
+  flex: 0 0 clamp(120px, 28vh, 38vh);
+  max-height: 38vh;
+  min-height: 118px;
+  overflow: hidden;
+}
+
+.tg-desk-right--cex .tg-order-wrap.tg-order-wrap--stack {
+  flex: 1 1 auto;
+  min-height: 96px;
+  max-height: none;
+  overflow: hidden;
+}
+
+.tg-desk-right--cex .tg-order-wrap.tg-order-wrap--stack > .stack {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.tg-desk-trades {
+  flex: 0 0 clamp(80px, 14vh, 22vh);
+  min-height: 76px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-top: 1px solid var(--tg-line2);
+}
+
+.tg-desk-trades-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.tg-tape-list--desk {
+  gap: 3px;
+}
+
+.tg-tape-row--desk {
+  padding: 3px 6px;
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+/* 코인 우측 주문창 버튼·입력 약 25% 컴팩트 */
+.tg-desk-right--cex .tg-order-wrap button {
+  font-size: 11px;
+  padding: 5px 9px;
+  min-height: 0;
+}
+
+.tg-desk-right--cex .tg-order-wrap .tg-crypto-entry-tabs button {
+  padding: 4px 8px;
+  font-size: 10px;
+}
+
+.tg-desk-right--cex .tg-order-wrap input[type="number"],
+.tg-desk-right--cex .tg-order-wrap input[type="text"],
+.tg-desk-right--cex .tg-order-wrap select {
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+.tg-desk-right--cex .tg-order-wrap .tg-lev-chip {
+  font-size: 10px;
+  padding: 3px 7px;
+}
+
+.tg-desk-right--cex .tg-order-wrap .tg-lev-step {
+  padding: 4px 8px;
+  font-size: 11px;
 }
 
 .tg-crypto-asset-strip {
