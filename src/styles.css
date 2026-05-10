@@ -216,6 +216,13 @@ body {
   color: #8b949e;
 }
 
+.symbolRail-tick {
+  font-size: 11px;
+  color: #6e7681;
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
 .symbolRail-list {
   list-style: none;
   margin: 0;

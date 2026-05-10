@@ -1991,6 +1991,9 @@ function App() {
             <div className="symbolRail-head">
               <span className="symbolRail-title">{marketCfg.label}</span>
               <span className="symbolRail-src">{marketCfg.sourceLabel}</span>
+              <span className="symbolRail-tick" title="선택 심볼 기준 최소 호가 단위">
+                호가 틱 {tickSize}
+              </span>
             </div>
             <ul className="symbolRail-list">
               {marketCfg.symbols.map((s) => {
