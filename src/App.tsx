@@ -231,7 +231,7 @@ const MARKET_GROUPS: Record<MarketGroupKey, MarketGroupConfig> = {
     label: "코인선물",
     sourceLabel: "Bitget USDT-M",
     tickSize: 0.1,
-    symbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"],
+    symbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "DOGEUSDT"],
     fetcher: "BITGET"
   },
   US_STOCKS: {
@@ -729,38 +729,37 @@ function App() {
     const pullMarket = async () => {
       try {
         if (marketCfg.fetcher === "BITGET") {
-          const res = await fetch(
-            `https://api.bitget.com/api/v2/mix/market/ticker?symbol=${encodeURIComponent(symbol)}&productType=USDT-FUTURES`
-          );
-          if (!res.ok) throw new Error("bitget failed");
-          const payload = (await res.json()) as {
-            code?: string;
-            data?: Array<{
-              lastPr?: string;
-              change24h?: string;
-              fundingRate?: string;
-              markPrice?: string;
-              baseVolume?: string;
-            }>;
-          };
-          if (payload.code !== "00000") throw new Error("bitget ticker rejected");
-          const ticker = payload.data?.[0];
-          const nextPrice = snapPrice(Number(ticker?.lastPr ?? mockPrice));
-          const nextChange = Number(ticker?.change24h ?? 0) * 100;
-          const frRaw = ticker?.fundingRate != null ? Number(ticker.fundingRate) * 100 : NaN;
-          const mpRaw = ticker?.markPrice != null ? snapPrice(Number(ticker.markPrice)) : NaN;
-          const volRaw = ticker?.baseVolume != null ? Number(ticker.baseVolume) : NaN;
+          const map = await fetchBitgetMixUsdtAllTickers();
+          const symKey = symbol.trim().toUpperCase();
+          const ticker = map.get(symKey);
+          if (!ticker) throw new Error("bitget ticker missing symbol");
+          const nextPrice = snapPrice(ticker.lastPr);
+          const mpRaw = ticker.markPrice != null ? snapPrice(ticker.markPrice) : NaN;
+          const volRaw = ticker.baseVolume;
+          const frRaw = ticker.fundingRatePct;
           if (mounted && Number.isFinite(nextPrice)) {
+            setCryptoTickerMids((prev) => {
+              const next = { ...prev };
+              for (const s of marketCfg.symbols) {
+                const row = map.get(s.trim().toUpperCase());
+                if (row) next[s.trim().toUpperCase()] = row.lastPr;
+              }
+              return next;
+            });
+            setSymbolDayChangePct((prev) => {
+              const next = { ...prev };
+              for (const s of marketCfg.symbols) {
+                const row = map.get(s.trim().toUpperCase());
+                if (row) next[symChangeKey(marketGroup, s)] = row.change24hPct;
+              }
+              return next;
+            });
             setPrice(nextPrice);
-            setSymbolDayChangePct((p) => ({
-              ...p,
-              [symChangeKey(marketGroup, symbol)]: nextChange
-            }));
             setLimitPrice(nextPrice);
             setSpeedPrice(nextPrice);
-            setCryptoFundingPct(Number.isFinite(frRaw) ? frRaw : null);
+            setCryptoFundingPct(frRaw);
             setCryptoMarkPrice(Number.isFinite(mpRaw) ? mpRaw : null);
-            setMarketLiveVolume(Number.isFinite(volRaw) ? volRaw : null);
+            setMarketLiveVolume(volRaw);
             if (!cryptoBookWsActive.current) {
               const book = await getOrderBookData(nextPrice, true);
               setOrderBook(book.rows);
@@ -835,7 +834,7 @@ function App() {
       mounted = false;
       window.clearInterval(id);
     };
-  }, [marketCfg.fetcher, marketGroup, symbol, tickSize]);
+  }, [marketCfg.fetcher, marketCfg.symbols, marketGroup, symbol, tickSize]);
 
   useEffect(() => {
     setSymbolDayChangePct((prev) => {
@@ -873,40 +872,8 @@ function App() {
   useEffect(() => {
     if (marketGroup !== "CRYPTO" || marketCfg.fetcher !== "BITGET") {
       setCryptoTickerMids({});
-      return;
     }
-    let cancelled = false;
-    const syncAll = async () => {
-      try {
-        const map = await fetchBitgetMixUsdtAllTickers();
-        if (cancelled) return;
-        setCryptoTickerMids((prev) => {
-          const next = { ...prev };
-          for (const s of marketCfg.symbols) {
-            const row = map.get(s.trim().toUpperCase());
-            if (row) next[s.trim().toUpperCase()] = row.lastPr;
-          }
-          return next;
-        });
-        setSymbolDayChangePct((prev) => {
-          const next = { ...prev };
-          for (const s of marketCfg.symbols) {
-            const row = map.get(s.trim().toUpperCase());
-            if (row) next[symChangeKey("CRYPTO", s)] = row.change24hPct;
-          }
-          return next;
-        });
-      } catch {
-        if (!cancelled) setCryptoTickerMids({});
-      }
-    };
-    syncAll();
-    const id = window.setInterval(syncAll, 5000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, [marketGroup, marketCfg.fetcher, marketCfg.symbols]);
+  }, [marketGroup, marketCfg.fetcher]);
 
   useEffect(() => {
     const raw = localStorage.getItem("tetherget-session");
