@@ -29,7 +29,13 @@ import {
 import { fetchBitgetMixUsdtOrderBook } from "./lib/bitgetDepth";
 import { fetchBitgetMixUsdtAllTickers } from "./lib/bitgetTickers";
 import { subscribeBitgetMixBooks15 } from "./lib/bitgetMixWsBook";
-import { calcLiquidationPrice, calcUnrealizedPnl, priceDecimalsForTick, validateOrder } from "./lib/trading";
+import {
+  calcLiquidationPrice,
+  calcUnrealizedPnl,
+  formatTickSizeDisplay,
+  priceDecimalsForTick,
+  validateOrder
+} from "./lib/trading";
 import { tradingViewSymbol } from "./lib/tradingViewSymbol";
 import { TradingViewEmbed } from "./components/TradingViewEmbed";
 
@@ -2002,7 +2008,7 @@ function App() {
               <span className="symbolRail-title">{marketCfg.label}</span>
               <span className="symbolRail-src">{marketCfg.sourceLabel}</span>
               <span className="symbolRail-tick" title="선택 심볼 기준 최소 호가 단위">
-                호가 틱 {tickSize}
+                호가 틱 {formatTickSizeDisplay(tickSize)}
               </span>
             </div>
             <ul className="symbolRail-list">
@@ -3559,7 +3565,7 @@ function TradePanel({
       {orderUiMode === "SPEED" ? (
         <div className="card stack speedPanel speedPanel--grid">
           <h3 className="speedSpan2">스피드 주문창</h3>
-          <small className="speedSpan2">시장: {symbol} / Tick: {tickSize}</small>
+          <small className="speedSpan2">시장: {symbol} / Tick: {formatTickSizeDisplay(tickSize)}</small>
           <div className="speedTabBar speedSpan2" role="tablist">
             <button
               type="button"

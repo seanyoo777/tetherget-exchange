@@ -52,3 +52,11 @@ export function priceDecimalsForTick(tickSize: number): number {
   }
   return String(tickSize).split(".")[1]?.length ?? 2;
 }
+
+/** 레일·툴팁용 — 과학적 표기 없이 고정 소수 문자열. */
+export function formatTickSizeDisplay(tickSize: number): string {
+  if (!Number.isFinite(tickSize) || tickSize <= 0) return "—";
+  if (tickSize >= 1 && Number.isInteger(tickSize)) return String(tickSize);
+  const d = priceDecimalsForTick(tickSize);
+  return tickSize.toFixed(Math.min(16, d));
+}
