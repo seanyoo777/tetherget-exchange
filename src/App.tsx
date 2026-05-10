@@ -1736,6 +1736,23 @@ function App() {
         ))}
       </nav>
 
+      <div className="marketQuickBar" role="toolbar" aria-label="시장 유형 빠른 선택">
+        <span className="marketQuickBar-label">시장</span>
+        {(Object.keys(MARKET_GROUPS) as MarketGroupKey[]).map((key) => {
+          const cfg = MARKET_GROUPS[key];
+          return (
+            <button
+              key={key}
+              type="button"
+              className={marketGroup === key ? "marketQuickBtn marketQuickBtn--active" : "marketQuickBtn"}
+              onClick={() => setMarketGroup(key)}
+            >
+              {cfg.label}
+            </button>
+          );
+        })}
+      </div>
+
       <main className="grid">
         {alerts.length > 0 ? (
           <div className="card">
@@ -1851,8 +1868,8 @@ function App() {
                     </small>
                   </div>
                   <div className="card">
-                    <h3>주문 패널 진입</h3>
-                    <p>현물/선물/모의투자 화면에서 동일한 주문 UI를 사용합니다.</p>
+                    <h3>주문 패널</h3>
+                    <p>아래에 스피드·기본 주문창이 표시됩니다. 현물·선물 전용 메뉴에서도 동일 UI를 사용합니다.</p>
                   </div>
                   <div className="card">
                     <h3>오더북</h3>
@@ -1967,6 +1984,90 @@ function App() {
                     <p>예상 청산가: {simulatedLiqPrice ? simulatedLiqPrice.toFixed(2) : "-"}</p>
                     <p>미실현손익: {simulatedPnl ? simulatedPnl.toFixed(2) : "0.00"} USDT</p>
                   </div>
+                </div>
+                <div className="stack exchangeOrderDock">
+                  <TradePanel
+                    isPractice={isPractice}
+                    setIsPractice={setIsPractice}
+                    activeBalance={activeBalance}
+                    qty={qty}
+                    setQty={setQty}
+                    leverage={leverage}
+                    setLeverage={setLeverage}
+                    side={side}
+                    setSide={setSide}
+                    orderType={orderType}
+                    setOrderType={setOrderType}
+                    limitPrice={limitPrice}
+                    setLimitPrice={setLimitPrice}
+                    estimatedCost={estimatedCost}
+                    submitOrder={submitOrder}
+                    allowLeverage={marketGroup === "US_FUTURES"}
+                    orderUiMode={orderUiMode}
+                    setOrderUiMode={setOrderUiMode}
+                    speedQty={speedQty}
+                    setSpeedQty={setSpeedQty}
+                    speedPrice={speedPrice}
+                    setSpeedPrice={setSpeedPrice}
+                    symbol={symbol}
+                    tickSize={tickSize}
+                    marketPrice={price}
+                    speedOpenOrders={sortedSpeedOpenOrders}
+                    onAmendLatestSpeedOrder={amendLatestSpeedOrder}
+                    onCancelAllSpeedOrders={cancelAllSpeedOrders}
+                    onAmendSpeedOrderById={amendSpeedOrderById}
+                    onCancelSpeedOrderById={cancelSpeedOrderById}
+                    speedPendingBookKey={speedPendingBookKey}
+                    speedMultiTicks={speedMultiTicks}
+                    setSpeedMultiTicks={setSpeedMultiTicks}
+                    speedMultiCount={speedMultiCount}
+                    setSpeedMultiCount={setSpeedMultiCount}
+                    placeSpeedMultiOrders={placeSpeedMultiOrders}
+                    speedMitEnabled={speedMitEnabled}
+                    setSpeedMitEnabled={setSpeedMitEnabled}
+                    speedMitTrigger={speedMitTrigger}
+                    setSpeedMitTrigger={setSpeedMitTrigger}
+                    speedMitOffsetTicks={speedMitOffsetTicks}
+                    setSpeedMitOffsetTicks={setSpeedMitOffsetTicks}
+                    speedMitExecMode={speedMitExecMode}
+                    setSpeedMitExecMode={setSpeedMitExecMode}
+                    registerMitOrder={registerMitOrder}
+                    cancelMitOrderById={cancelMitOrderById}
+                    speedMitOrders={sortedSpeedMitOrders}
+                    speedUseOco={speedUseOco}
+                    setSpeedUseOco={setSpeedUseOco}
+                    speedTpTicks={speedTpTicks}
+                    setSpeedTpTicks={setSpeedTpTicks}
+                    speedSlTicks={speedSlTicks}
+                    setSpeedSlTicks={setSpeedSlTicks}
+                    speedFills={sortedSpeedFills}
+                    speedBottomTab={speedBottomTab}
+                    setSpeedBottomTab={setSpeedBottomTab}
+                    speedFillFilter={speedFillFilter}
+                    setSpeedFillFilter={setSpeedFillFilter}
+                    speedOpenSort={speedOpenSort}
+                    setSpeedOpenSort={setSpeedOpenSort}
+                    speedMitSort={speedMitSort}
+                    setSpeedMitSort={setSpeedMitSort}
+                    speedFillSort={speedFillSort}
+                    setSpeedFillSort={setSpeedFillSort}
+                    exportSpeedFillsCsv={exportSpeedFillsCsv}
+                    formatKst={formatKst}
+                    marketGroupLabel={marketCfg.label}
+                    speedToggleConfirm={speedToggleConfirm}
+                    setSpeedToggleConfirm={setSpeedToggleConfirm}
+                    speedPanelTab={speedPanelTab}
+                    setSpeedPanelTab={setSpeedPanelTab}
+                    speedSummaryCollapsed={speedSummaryCollapsed}
+                    setSpeedSummaryCollapsed={setSpeedSummaryCollapsed}
+                    speedFillSearch={speedFillSearch}
+                    setSpeedFillSearch={setSpeedFillSearch}
+                    speedOpenWarnThreshold={speedOpenWarnThreshold}
+                    setSpeedOpenWarnThreshold={setSpeedOpenWarnThreshold}
+                    speedMitWarnThreshold={speedMitWarnThreshold}
+                    setSpeedMitWarnThreshold={setSpeedMitWarnThreshold}
+                    futuresContractMode={marketGroup === "US_FUTURES"}
+                  />
                 </div>
               </ShellPage>
             }

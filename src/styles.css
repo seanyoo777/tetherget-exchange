@@ -62,6 +62,45 @@ body {
   background: #1f6feb1a;
 }
 
+.marketQuickBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+}
+
+.marketQuickBar-label {
+  font-size: 12px;
+  color: #8b949e;
+  margin-right: 4px;
+}
+
+.marketQuickBtn {
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid #30363d;
+  background: #0d1117;
+  color: #c9d1d9;
+  padding: 6px 12px;
+  border-radius: 8px;
+}
+
+.marketQuickBtn:hover {
+  border-color: #58a6ff;
+  color: #e6edf3;
+}
+
+.marketQuickBtn--active {
+  border-color: #1f6feb;
+  background: #1f6feb22;
+  color: #fff;
+}
+
 .grid {
   display: grid;
   gap: 10px;
