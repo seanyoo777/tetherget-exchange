@@ -1413,6 +1413,28 @@ main.tg-main .tg-route-body {
   font-size: 11px;
 }
 
+/* 코인 우측 — 스피드 주문 탭·그리드도 동일 컴팩트 밀도 */
+.tg-desk-right--cex .tg-order-wrap .speedPanel button,
+.tg-desk-right--cex .tg-order-wrap .speedPanel input,
+.tg-desk-right--cex .tg-order-wrap .speedPanel select {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.tg-desk-right--cex .tg-order-wrap .speedTab {
+  padding: 5px 5px;
+  font-size: 11px;
+}
+
+.tg-desk-right--cex .tg-order-wrap .speedHintBar {
+  padding: 4px 6px;
+  font-size: 11px;
+}
+
+.tg-desk-right--cex .tg-order-wrap .speedPanel h3 {
+  font-size: 13px;
+}
+
 .tg-crypto-asset-strip {
   flex-shrink: 0;
   border-bottom: 1px solid var(--tg-line2);
