@@ -16,15 +16,41 @@ function apiUrl(path: string): string {
   return API_BASE ? `${API_BASE}${p}` : p;
 }
 
-/** Zod 런타임 없이 타입만 — 번들에 `zod` 미포함. */
+function perfNow(): number {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
+}
+
+/** fetch 완료 시점까지 라운드트립(ms) — 기존 pingHealth/pingReady 와 동일 기준 */
+async function fetchTextMeasured(path: string): Promise<{ text: string; latencyMs: number; res: Response }> {
+  const t0 = perfNow();
+  const res = await fetch(apiUrl(path));
+  const latencyMs = Math.max(0, Math.round(perfNow() - t0));
+  const text = await res.text();
+  return { text, latencyMs, res };
+}
+
+/** Zod 런타임 없이 타입만 — 번들에 `zod` 미포함 (`import type` / `export type` 만 사용). */
+import type {
+  ExchangeHaltBody,
+  ExchangeSimMidBody,
+  ExchangeSymbolToggleBody,
+  HealthResponse,
+  LoginRequestBody,
+  OrderCreateBody,
+  ReadyResponse,
+  WithdrawalRequestBody
+} from "@tetherget/contracts/schemas";
+
 export type {
   ExchangeHaltBody,
   ExchangeSimMidBody,
   ExchangeSymbolToggleBody,
+  HealthResponse,
   LoginRequestBody,
   OrderCreateBody,
+  ReadyResponse,
   WithdrawalRequestBody
-} from "@tetherget/contracts/schemas";
+};
 
 export type ApiRole = "SUPER_ADMIN" | "OPS_ADMIN" | "CS_ADMIN" | "TRADER";
 
@@ -67,6 +93,38 @@ export type ApiOrderResult = {
   marginLockedUsdt: number;
   createdAt: string;
 };
+
+/** GET /api/health — 인증 불필요. 라운드트립 지연(ms)과 함께 반환. */
+export async function pingHealth(): Promise<{ body: HealthResponse; latencyMs: number }> {
+  const { text, latencyMs, res } = await fetchTextMeasured("/api/health");
+  if (!res.ok) {
+    throw new Error(text || `health ${res.status}`);
+  }
+  let raw: unknown = {};
+  try {
+    raw = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(text || `health ${res.status}`);
+  }
+  const body = raw as HealthResponse;
+  return { body, latencyMs };
+}
+
+/** GET /api/ready — 200 또는 503 모두 JSON 본문이 오면 파싱해 반환(레디 프로브용). */
+export async function pingReady(): Promise<{ body: ReadyResponse; latencyMs: number }> {
+  const { text, latencyMs, res } = await fetchTextMeasured("/api/ready");
+  let raw: unknown = {};
+  try {
+    raw = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(text || `ready ${res.status}`);
+  }
+  const body = raw as ReadyResponse;
+  if (res.ok || res.status === 503) {
+    return { body, latencyMs };
+  }
+  throw new Error(text || `ready ${res.status}`);
+}
 
 function mergeRequestHeaders(init?: RequestInit): HeadersInit {
   const base: Record<string, string> = { "Content-Type": "application/json" };

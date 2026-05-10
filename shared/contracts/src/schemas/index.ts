@@ -1,3 +1,5 @@
+export { healthResponseSchema, type HealthResponse } from "./health.js";
+export { readyResponseSchema, type ReadyResponse } from "./health.js";
 export { loginSchema, type LoginRequestBody } from "./login.js";
 export { orderSchema, type OrderCreateBody } from "./order.js";
 export { withdrawalRequestSchema, type WithdrawalRequestBody } from "./withdrawal.js";

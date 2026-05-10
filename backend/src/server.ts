@@ -465,6 +465,8 @@ app.get("/api/health", (_req, res) => {
     ok: true,
     service: "tetherget-backend",
     platformApiVersion: PLATFORM_API_VERSION,
+    uptimeSeconds: Math.floor(process.uptime()),
+    nodeVersion: process.version,
     now: new Date().toISOString()
   });
 });
@@ -481,6 +483,8 @@ app.get("/api/ready", (_req, res) => {
       ready: true,
       platformApiVersion: PLATFORM_API_VERSION,
       strictAuth,
+      uptimeSeconds: Math.floor(process.uptime()),
+      nodeVersion: process.version,
       now: new Date().toISOString()
     });
   } catch {
@@ -489,6 +493,8 @@ app.get("/api/ready", (_req, res) => {
       ready: false,
       platformApiVersion: PLATFORM_API_VERSION,
       strictAuth,
+      uptimeSeconds: Math.floor(process.uptime()),
+      nodeVersion: process.version,
       now: new Date().toISOString()
     });
   }

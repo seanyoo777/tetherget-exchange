@@ -29,6 +29,8 @@ import {
 import { fetchBitgetMixUsdtOrderBook } from "./lib/bitgetDepth";
 import { fetchBitgetMixUsdtAllTickers } from "./lib/bitgetTickers";
 import { MARKET_PREFS_KEY, mergePersistMarketPrefs, readMarketPrefsFromStorage } from "./lib/marketPrefs";
+import { formatHealthProbeTooltip } from "./lib/healthProbeTooltip";
+import { useApiHealthProbe } from "./hooks/useApiHealthProbe";
 import { subscribeBitgetMixBooks15 } from "./lib/bitgetMixWsBook";
 import {
   calcLiquidationPrice,
@@ -84,6 +86,7 @@ function speedFillFilterLabel(f: SpeedFillFilter): string {
   };
   return map[f];
 }
+
 type SpeedMitOrder = {
   id: string;
   side: OrderSide;
@@ -399,6 +402,7 @@ function App() {
   const [adminRole, setAdminRole] = useState<AdminRole>("SUPER_ADMIN");
   const [auditLogs, setAuditLogs] = useState<string[]>(["SYSTEM: platform booted"]);
   const [backendConnected, setBackendConnected] = useState(false);
+  const { apiHealthProbe, apiProbeSettled } = useApiHealthProbe();
   const [authEmail, setAuthEmail] = useState("super@tetherget.io");
   const [authPassword, setAuthPassword] = useState("pass1234");
   const [authUser, setAuthUser] = useState<{ id: number; email: string; role: ApiRole } | null>(null);
@@ -699,8 +703,11 @@ function App() {
   useEffect(() => {
     const page = navItems.find(([, to]) => to === location.pathname)?.[0] ?? "";
     const symPart = `${symbol} · ${marketCfg.label}`;
-    document.title = page ? `${symPart} · ${page} · Tetherget` : `${symPart} · Tetherget`;
-  }, [location.pathname, symbol, marketCfg.label]);
+    let title = page ? `${symPart} · ${page} · Tetherget` : `${symPart} · Tetherget`;
+    if (apiProbeSettled && !apiHealthProbe) title += " · API 오프라인";
+    if (apiHealthProbe && apiHealthProbe.diskReady === false) title += " · 디스크 레디 실패";
+    document.title = title;
+  }, [location.pathname, symbol, marketCfg.label, apiHealthProbe, apiProbeSettled]);
 
   useEffect(() => {
     if (marketGroup !== "CRYPTO") {
@@ -1995,10 +2002,61 @@ function App() {
             </select>
           </label>
         </div>
-        <p>
-          Backend: {backendConnected ? "CONNECTED" : "OFFLINE"} / User:{" "}
-          {authUser ? `${authUser.email} (${authUser.role})` : "미로그인"}
-        </p>
+        <div className="headerStatus" aria-live="polite">
+          <span
+            className={`headerStatus-line${
+              apiHealthProbe?.diskReady === false ? " headerStatus-line--diskWarn" : ""
+            }`}
+            title={
+              apiHealthProbe
+                ? formatHealthProbeTooltip({
+                    latencyMs: apiHealthProbe.latencyMs,
+                    serverNow: apiHealthProbe.serverNow,
+                    probedAt: apiHealthProbe.probedAt,
+                    nodeVersion: apiHealthProbe.nodeVersion,
+                    diskReady: apiHealthProbe.diskReady
+                  })
+                : apiProbeSettled
+                  ? "GET /api/health 에 연결할 수 없습니다. 백엔드 주소·CORS·네트워크를 확인하세요."
+                  : "헬스 엔드포인트 응답 대기 중입니다."
+            }
+            aria-busy={!apiProbeSettled}
+            aria-label={
+              apiHealthProbe
+                ? `API 지연 ${apiHealthProbe.latencyMs}ms, 버전 ${apiHealthProbe.platformApiVersion}${
+                    apiHealthProbe.diskReady === false
+                      ? ", 상태 저장 디스크 레디 실패"
+                      : apiHealthProbe.diskReady === true
+                        ? ", 디스크 레디 정상"
+                        : ""
+                  }`
+                : apiProbeSettled
+                  ? "API 연결 불가"
+                  : "API 상태 확인 중"
+            }
+          >
+            API:{" "}
+            {apiHealthProbe ? (
+              <>
+                {apiHealthProbe.latencyMs}ms · v{apiHealthProbe.platformApiVersion}
+                {apiHealthProbe.uptimeSeconds != null
+                  ? apiHealthProbe.uptimeSeconds < 120
+                    ? ` · up ${apiHealthProbe.uptimeSeconds}s`
+                    : ` · up ${Math.floor(apiHealthProbe.uptimeSeconds / 3600)}h${Math.floor((apiHealthProbe.uptimeSeconds % 3600) / 60)}m`
+                  : ""}
+                {apiHealthProbe.diskReady === false ? " · 디스크 레디 실패" : null}
+              </>
+            ) : apiProbeSettled ? (
+              "OFFLINE"
+            ) : (
+              "확인 중…"
+            )}
+          </span>
+          <span className="headerStatus-line">
+            Backend(work): {backendConnected ? "CONNECTED" : "OFFLINE"} · User:{" "}
+            {authUser ? `${authUser.email} (${authUser.role})` : "미로그인"}
+          </span>
+        </div>
         {authToken ? <small>Session Token: {authToken}</small> : null}
         {sessionExpireAt ? <small>Session Expires: {new Date(sessionExpireAt).toLocaleString()}</small> : null}
         {authUser ? (
