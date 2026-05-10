@@ -1,4 +1,6 @@
-/** 거래 패널 — 기본 주문 / 향후 스피드 주문(`SpeedOrderPanel`) 공통 타입 */
+/** 거래 패널 — 기본 주문 / 스피드 주문(`SpeedOrderPanel`) 공통 타입 */
+
+import type { Dispatch, ReactNode, RefObject, SetStateAction } from "react";
 
 export type OrderSide = "LONG" | "SHORT";
 export type OrderType = "MARKET" | "LIMIT";
@@ -147,6 +149,27 @@ export type TradePanelProps = {
   /** 코인: 자산 카드를 패널 밖(중간 스트립)으로 분리 */
   cryptoSummaryDetached?: boolean;
 };
+
+/** `TradePanel` 내부에서만 계산·주입 — 스피드 패널 전용 */
+export type SpeedOrderPanelExtras = {
+  speedDecimals: number;
+  qtyCaption: string;
+  qtyStep: number;
+  applyOco: (next: boolean) => void;
+  applyMitEnabled: (next: boolean) => void;
+  resetSpeedView: () => void;
+  highlightText: (text: string, query: string) => ReactNode;
+  openVisible: number;
+  setOpenVisible: Dispatch<SetStateAction<number>>;
+  mitVisible: number;
+  setMitVisible: Dispatch<SetStateAction<number>>;
+  fillVisible: number;
+  setFillVisible: Dispatch<SetStateAction<number>>;
+  fillsSectionRef: RefObject<HTMLUListElement | null>;
+  fillSearchInputRef: RefObject<HTMLInputElement | null>;
+};
+
+export type SpeedOrderPanelProps = TradePanelProps & SpeedOrderPanelExtras;
 
 /** 메인 거래창(`TradePanel`)에만 전달 — 스피드 필드 제외 */
 export type BasicTradePanelProps = Pick<
