@@ -1,0 +1,16 @@
+{
+  "updatedAt": "2026-05-10T16:10:00+09:00",
+  "weights": {
+    "frontend": 0.3,
+    "backend": 0.35,
+    "database": 0.25,
+    "devops": 0.1
+  },
+  "scores": {
+    "frontend": 58,
+    "backend": 40,
+    "database": 12,
+    "devops": 55
+  },
+  "notes": "프론트: 데모급 CEX UI+Bitget+Vitest. 백: Express+JWT+시뮬 매칭. DB: json 스냅샷만. 운영: CI/배포 파일 있음."
+}

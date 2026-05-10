@@ -24,7 +24,8 @@
     "preview:full": "npm run build && concurrently -n web,api -c cyan,magenta \"vite preview --host --port 4173\" \"npm run dev --prefix backend\"",
     "tunnel": "npx --yes localtunnel --port 5173",
     "tunnel:preview": "npx --yes localtunnel --port 4173",
-    "test": "vitest run"
+    "test": "vitest run",
+    "report:completion": "node scripts/completion-report.mjs"
   },
   "dependencies": {
     "@tetherget/contracts": "file:./shared/contracts",
