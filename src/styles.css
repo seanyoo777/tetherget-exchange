@@ -45,6 +45,12 @@ body {
   flex-direction: column;
 }
 
+#root:has(.app--terminal) {
+  height: 100%;
+  min-height: 100%;
+  overflow: hidden;
+}
+
 .visuallyHidden {
   position: absolute;
   width: 1px;
